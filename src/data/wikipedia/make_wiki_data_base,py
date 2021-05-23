@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri May 21 01:26:02 2021
+
+@author: ivanr
+"""
+# =============================================================================
+# Imports
+# =============================================================================
+
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+from src.data.data_statics import SQL_WIKI_DUMP
+
+# TODO: Convert strings to LargeBinary for faster reading and writting
+# =============================================================================
+# Functions
+# =============================================================================
+Base = declarative_base()
+
+
+class User(Base):
+    __tablename__ = "wiki_articles"
+    id = Column("id", Integer, primary_key=True)
+    title = Column("title", String, unique=False)
+    summary = Column("summary", Text, unique=False)
+    article = Column("article", Text, unique=False)
+
+
+engine = create_engine(f"sqlite:///{str(SQL_WIKI_DUMP)}", echo=True)
+Base.metadata.create_all(bind=engine)
+Session = sessionmaker(bind=engine)
+
+# Insert stuff
+session = Session()
+user = User()
+user.id = 0
+user.title = "Test title"
+user.summary = "Test summary" * 100
+user.article = "Test article" * 10000
+
+session.add(user)
+session.commit()
+
+session.close()
+
+
+# Get stuff
+session = Session()
+users = session.query(User).all()
+for user in users:
+    print([user.id, user.summary, user.article])
+
+# get stuff filtered
+obs0 = session.query(User).filter_by(id=0).first()
+print([obs0.id, obs0.summary, obs0.article])
+
+session.close()
