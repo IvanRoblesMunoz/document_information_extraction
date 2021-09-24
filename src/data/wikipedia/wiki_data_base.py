@@ -222,6 +222,14 @@ def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
     return rows
 
 
+query = """
+SELECT Count(*)
+FROM article_level_info
+WHERE body_word_count>500 and summary_word_count>50
+"""
+rows = retrieve_query(query)
+
+
 def retrive_suitable_column_ids(
     out_f: str = SQL_WIKI_DUMP,
     min_summary: int = MIN_TOKENS_SUMMARY,
