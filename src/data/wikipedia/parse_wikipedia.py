@@ -29,17 +29,19 @@ from gensim.corpora.wikicorpus import (
 )
 from gensim.corpora.wikicorpus import filter_wiki
 
-from src.data.wikipedia.wiki_data_base_refractoring import create_wiki_data_base
+from src.data.wikipedia.wiki_data_base import create_wiki_data_base
 
 # =============================================================================
 # Statics
 # =============================================================================
-from src.data.data_statics import RAW_WIKIPEDIA_CORPUS
+from src.data.data_statics import (
+    RAW_WIKIPEDIA_CORPUS,
+    READ_QUE_SIZE,
+    SQL_QUE_SIZE,
+    N_PROCESSES,
+    BATCH_SIZE,
+)
 
-
-READ_QUE_SIZE = 100
-SQL_QUE_SIZE = 100
-BATCH_SIZE = 1000
 
 KEYWORDS = [
     "notes",
@@ -193,9 +195,6 @@ def format_sql_sub_args(section_level_output, article_level_output):
     return section_level_output, article_level_output
 
 
-args = None
-
-
 def my_process_article(queue_read, queue_sql):
 
     args = queue_read.get()
@@ -206,8 +205,10 @@ def my_process_article(queue_read, queue_sql):
         article_level_output_list = []
 
         for sub_arg in args:
+            # sub_arg = args[1]
             text, title, pageid = sub_arg
 
+            # print(text)
             # Preprocessing
             text = filter_wiki(text)
             text = deal_with_sections(text)
@@ -221,7 +222,7 @@ def my_process_article(queue_read, queue_sql):
                 len(nltk.word_tokenize(sect)) for sect in section_texts_list
             ]
 
-            summary_length = len(section_texts_list[0])
+            summary_length = section_word_count_list[0]
             body_word_count = sum(section_word_count_list) - summary_length
 
             section_level_output = (
@@ -257,7 +258,7 @@ class MyWikiCorpus:
         fname,
         queue_read,
         queue_sql,
-        processes=os.cpu_count(),
+        processes=N_PROCESSES,
         filter_namespaces=("0",),
     ):
         self.fname = fname
@@ -269,8 +270,6 @@ class MyWikiCorpus:
     def my_get_texts(self):
         """Yield Processed wikipedia articles into sql queue."""
 
-        articles, articles_all = 0, 0
-        positions, positions_all = 0, 0
         texts_generator = (
             (text, title, pageid)
             for title, text, pageid in my_extract_pages(
@@ -296,7 +295,6 @@ class MyWikiCorpus:
         with tqdm(total=100) as pbar:
             for args in grouper(texts_generator, batch_size=BATCH_SIZE):
                 self.queue_read.put(args)
-
                 count_articles += BATCH_SIZE
                 pbar.update(BATCH_SIZE)
                 if count_articles % (BATCH_SIZE * 1) == 0:
@@ -304,11 +302,15 @@ class MyWikiCorpus:
 
         for _ in range(self.processes):
             self.queue_read.put(None)
-        queue_sql.put(None)
 
         # Join processes
         for p in text_processes:
+            # p.terminate()
             p.join()
+
+        print("waiting 10 seconds")
+        queue_sql.put(None)
+        # sql_process.terminate()
         sql_process.join()
 
 
@@ -327,4 +329,4 @@ if __name__ == "__main__":
     wiki_corpus.my_get_texts()
     end_time = time.time()
 
-    print(str(timedelta(seconds=end_time - start_time)))
+    print("finished in: ", str(timedelta(seconds=end_time - start_time)))
