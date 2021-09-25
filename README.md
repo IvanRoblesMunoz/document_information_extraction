@@ -29,6 +29,7 @@ pageid = int
 section_title = pickle.dump(["Heading first section", ..., "Heading last section"])
 summary = "Summary text"
 body_sections = pickle.dump(["Body first section", ..., "Body last section"])
+section_word_count = pickle.dump(["number of words in first section", ..., "number of words in last section"])
 ```
 
 |pageid|section_title|summary|body_sections|section_word_count|
@@ -41,5 +42,6 @@ body_sections = pickle.dump(["Body first section", ..., "Body last section"])
 |------|-----|------------------|------------------|
 |Integer primary key|Text| Integer | Integer |
 
+For a more in depth look into what the final SQL database looks like, check this [notebook](document_information_extraction/notebooks/EDA/01.evaluate-token-distribution.ipynb)
 
 ## 2. Evaluate and select best articles for summarisation
