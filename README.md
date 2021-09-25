@@ -42,5 +42,6 @@ section_word_count = pickle.dump(["number of words in first section", ..., "numb
 |------|-----|------------------|------------------|
 |Integer primary key|Text| Integer | Integer |
 
+For a more in depth look into what the final SQL database looks like, check this [notebook](document_information_extraction/notebooks/EDA/01.evaluate-token-distribution.ipynb)
 
 ## 2. Evaluate and select best articles for summarisation
