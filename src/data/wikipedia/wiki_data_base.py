@@ -131,6 +131,63 @@ def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
     return rows
 
 
+# def retrive_suitable_column_ids(
+#     out_f: str = SQL_WIKI_DUMP,
+#     min_summary: int = MIN_TOKENS_SUMMARY,
+#     max_body: int = MAX_TOKENS_BODY,
+#     min_ratio: float = MIN_SUMMARY_RATIO,
+#     max_ratio: float = MAX_SUMMARY_RATIO,
+#     limit_ids: int = None,
+# ) -> list:
+#     """Obtain a list of article ids based on character length of summary and body."""
+#     query = f"""
+#         SELECT pageid
+#         FROM article_length
+#         WHERE n_tokens_summary >= {min_summary}
+#             AND n_tokens_text <= {max_body}
+#             AND CAST( n_tokens_summary AS FLOAT)/ CAST( n_tokens_text AS FLOAT) >= {min_ratio}
+#             AND CAST( n_tokens_summary AS FLOAT)/CAST( n_tokens_text AS FLOAT) <= {max_ratio}
+
+#         """
+#     if not limit_ids is None:
+#         query += f"LIMIT {limit_ids}"
+#     rows = retrieve_query(query, out_f)
+#     suitable_entries = [page_id[0] for page_id in rows]
+#     return suitable_entries
+
+
+# def retrive_observations_from_ids(
+#     ids,
+#     out_f=SQL_WIKI_DUMP,
+#     # table="wiki_articles",
+#     id_column="page_id",
+#     chunksize=10000,
+# ):
+#     """Retrieve pageid, body and summary based on list of ids."""
+
+#     def _retrive_single_query(batch_ids, out_f):
+#         """Retrieve single query batch."""
+
+#         query = (
+#             f"""
+#             SELECT pageid,summary,body
+#             FROM wiki_articles
+#             WHERE {id_column} in ({','.join(['?']*len(batch_ids))})
+#             """,
+#             batch_ids,
+#         )
+#         return retrieve_query(query, out_f)
+
+#     iterations = len(ids) // chunksize + 1
+#     relevant_obs = []
+#     for i in range(iterations):
+#         obs = _retrive_single_query(ids[chunksize * i : chunksize * (i + 1)], out_f)
+#         relevant_obs.append(obs)
+
+#     relevant_obs = list(itertools.chain(*relevant_obs))
+#     return relevant_obs
+
+
 # query = """
 # SELECT wk.*
 # FROM article_level_info ar
