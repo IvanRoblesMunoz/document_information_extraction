@@ -29,6 +29,7 @@ pageid = int
 section_title = pickle.dump(["Heading first section", ..., "Heading last section"])
 summary = "Summary text"
 body_sections = pickle.dump(["Body first section", ..., "Body last section"])
+section_word_count = pickle.dump(["number of words in first section", ..., "number of words in last section"])
 ```
 
 |pageid|section_title|summary|body_sections|section_word_count|
