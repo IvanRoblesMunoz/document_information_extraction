@@ -10,6 +10,7 @@ Created on Wed Sep 22 17:39:46 2021
 # Imports
 # =============================================================================
 import time
+import pickle
 from datetime import timedelta
 import os
 import sys
@@ -27,7 +28,7 @@ import nltk
 from gensim.corpora.wikicorpus import (
     iterparse,
 )
-from gensim.corpora.wikicorpus import filter_wiki
+from gensim.corpora.wikicorpus import filter_wiki, remove_markup
 
 from src.data.wikipedia.wiki_data_base import create_wiki_data_base
 
@@ -51,6 +52,7 @@ KEYWORDS = [
     "further reading",
     "external links",
     "see also",
+    "References",
 ]
 REMOVE_REF = "(?i)" + "|".join(
     [f"==((\s|\n)*){keyword}((\s|\n)*)==" for keyword in KEYWORDS]
@@ -169,6 +171,7 @@ def deal_with_sections(text: str) -> list:
         " " + text
     )  # To avoid errors where there might not be a summary, we will add a single blank space
     text = re.split(RE_SPLIT_SUMMARY, text)  # Split text
+    text = [remove_markup(section) for section in text]
     text = ["Summary_Target"] + text
     return text
 
@@ -176,12 +179,12 @@ def deal_with_sections(text: str) -> list:
 def format_sql_sub_args(section_level_output, article_level_output):
     section_level_output = [
         {
-            "pageid": row[0],
-            "section_title": row[1],
-            "section_text": row[2],
-            "section_word_count": row[3],
+            "pageid": section_level_output[0],
+            "section_titles": section_level_output[1],
+            "summary": section_level_output[2],
+            "body_sections": section_level_output[3],
+            "section_word_count": section_level_output[4],
         }
-        for row in zip(*section_level_output)
     ]
 
     article_level_output = [
@@ -216,8 +219,13 @@ def my_process_article(queue_read, queue_sql):
             # Prepare output
             section_titles_list, section_texts_list = text[::2], text[1::2]
 
+            # Separate summary from text
+            section_titles_list = section_titles_list[1:]
+            summary = section_texts_list[0]
+            body_sections_lists = section_texts_list[1:]
+
             section_n = len(section_titles_list)
-            pageid_list = [pageid] * section_n
+
             section_word_count_list = [
                 len(nltk.word_tokenize(sect)) for sect in section_texts_list
             ]
@@ -226,10 +234,11 @@ def my_process_article(queue_read, queue_sql):
             body_word_count = sum(section_word_count_list) - summary_length
 
             section_level_output = (
-                pageid_list,
-                section_titles_list,
-                section_texts_list,
-                section_word_count_list,
+                pageid,
+                pickle.dumps(section_titles_list),
+                summary,
+                pickle.dumps(body_sections_lists),
+                pickle.dumps(section_word_count_list[1:]),
             )
             article_level_output = (
                 pageid,

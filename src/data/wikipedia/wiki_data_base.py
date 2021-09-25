@@ -32,10 +32,6 @@ from sqlalchemy.orm import sessionmaker  # , relationship
 
 from src.data.data_statics import (
     SQL_WIKI_DUMP,
-    MIN_TOKENS_SUMMARY,
-    MIN_SUMMARY_RATIO,
-    MAX_SUMMARY_RATIO,
-    MAX_TOKENS_BODY,
 )
 
 # =============================================================================
@@ -50,11 +46,11 @@ class WikiArticles(Base):
     __tablename__ = "wiki_articles"
     __table_args__ = {"extend_existing": True}
 
-    key = Column("key", Integer, primary_key=True, autoincrement=True)
-    pageid = Column("pageid", Integer, unique=False)
-    section_title = Column("section_title", Text, unique=False)
-    section_text = Column("section_text", Text, unique=False)
-    section_word_count = Column("section_word_count", Integer, unique=False)
+    pageid = Column("pageid", Integer, primary_key=True)
+    section_title = Column("section_titles", LargeBinary, unique=False)
+    summary = Column("summary", Text, unique=False)
+    body_sections = Column("body_sections", LargeBinary, unique=False)
+    section_word_count = Column("section_word_count", LargeBinary, unique=False)
 
 
 class ArticleLevelInfo(Base):
@@ -64,7 +60,7 @@ class ArticleLevelInfo(Base):
     __table_args__ = {"extend_existing": True}
 
     pageid = Column(
-        "pageid", Integer, primary_key=True  # ForeignKey("wiki_articles.pageid"),
+        "pageid", Integer, ForeignKey("wiki_articles.pageid"), primary_key=True
     )
     title = Column("title", Text, unique=False)
     summary_word_count = Column("summary_word_count", Integer, unique=False)
@@ -136,23 +132,22 @@ def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
 
 
 # query = """
-# SELECT ar.*
-# -- wk.*
+# SELECT wk.*
 # FROM article_level_info ar
-# --LEFT JOIN wiki_articles wk
-# --    ON ar.pageid = wk.pageid
-# WHERE ar.body_word_count<0
-# limit 10
+# LEFT JOIN wiki_articles wk
+#     ON ar.pageid = wk.pageid
+# WHERE ar.body_word_count>15 and ar.summary_word_count>150
+# LIMIT 25
+
 # """
+# import pickle
 
 # data = retrieve_query(query)
+# for row in data:
+#     pageid = row[0]
+#     section_titles = pickle.loads(row[1])
+#     summary = row[2]
+#     section_word_count = pickle.loads(row[3])
+#     body_sections = pickle.loads(row[4])
 
-# query2 = """
-# SELECT wk.*
-# FROM  wiki_articles wk
-
-# WHERE wk.pageid=10
-
-# """
-
-# data2 = retrieve_query(query2)
+#     check = pageid, section_titles, summary, section_word_count, body_sections

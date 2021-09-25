@@ -222,28 +222,6 @@ def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
     return rows
 
 
-import time
-
-query = """
-SELECT Count(*)
-FROM article_level_info
-WHERE body_word_count>250 and summary_word_count>50
-"""
-
-
-while True:
-    print("-" * 15)
-    for b, s in [(500, 100), (250, 50), (0, 0)]:
-        query = f"""
-                SELECT Count(*)
-                FROM article_level_info
-                WHERE body_word_count>={b} and summary_word_count>={s}
-                """
-        rows = retrieve_query(query)
-        print(b, s, rows)
-    time.sleep(300)
-
-
 def retrive_suitable_column_ids(
     out_f: str = SQL_WIKI_DUMP,
     min_summary: int = MIN_TOKENS_SUMMARY,

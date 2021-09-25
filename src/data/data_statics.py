@@ -24,19 +24,19 @@ SQL_WIKI_DUMP = INTERIM_DATA_PATH / "wiki_db_dumps.db"
 # =============================================================================
 # Wikipedia parsing constants
 # =============================================================================
-READ_QUE_SIZE = os.cpu_count() * 2
-SQL_QUE_SIZE = os.cpu_count() * 2
+READ_QUE_SIZE = 1  # os.cpu_count()
+SQL_QUE_SIZE = 1  # os.cpu_count()
 N_PROCESSES = os.cpu_count()
-BATCH_SIZE = 20000
-
+BATCH_SIZE = 10000
 
 # =============================================================================
 # Wiki SQL dump constants
 # =============================================================================
-MIN_TOKENS_SUMMARY = 100
-MIN_SUMMARY_RATIO = 0.05
-MAX_SUMMARY_RATIO = 0.3
-MAX_TOKENS_BODY = 16384
+MIN_TOKENS_SUMMARY = 40
+MIN_TOKENS_BODY = 250
+MIN_COMPRESION_RATIO = 0.05
+MAX_COMPRESION_RATIO = 0.4
+
 # =============================================================================
 # Bert score constants
 # =============================================================================
