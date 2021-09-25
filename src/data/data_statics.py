@@ -15,12 +15,13 @@ from pathlib import Path
 # =============================================================================
 # Paths
 # =============================================================================
-DATA_PATH = Path("/home/ivanr/git/document_information_extraction/data/")
+WORKING_DIRECTORY = Path(os.getcwd())
+DATA_PATH = WORKING_DIRECTORY / "data"
 RAW_DATA_PATH = DATA_PATH / "raw"
 INTERIM_DATA_PATH = DATA_PATH / "interim"
 RAW_WIKIPEDIA_CORPUS = RAW_DATA_PATH / "enwiki-latest-pages-articles.xml.bz2"
 DECOMPRESSED_WIKIPEDIA_DUMP = RAW_DATA_PATH / "enwiki-latest-pages-articles.xml"
-SQL_WIKI_DUMP = INTERIM_DATA_PATH / "wiki_db_dumps.db"
+SQL_WIKI_DUMP = INTERIM_DATA_PATH / "wiki_db_dumps_test.db"
 # =============================================================================
 # Wikipedia parsing constants
 # =============================================================================
