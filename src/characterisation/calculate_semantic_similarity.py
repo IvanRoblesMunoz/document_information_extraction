@@ -1,46 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Sun Sep 26 11:27:05 2021
+Created on Sun Sep 26 21:44:13 2021
 
 @author: ivanr
 """
-
 # =============================================================================
 # Imports
 # =============================================================================
-import os
 import sys
-from multiprocessing import Process, Queue
-from pathlib import Path
-import pickle
+import os
 import time
 from datetime import timedelta
+import multiprocessing as mp
+from multiprocessing import Process, Queue
+from pathlib import Path
 from tqdm import tqdm
 
 WORKING_DIRECTORY = Path(os.getcwd())
 sys.path.append(str(WORKING_DIRECTORY))
 
+from src.characterisation.functions import compute_semantic_similarity
 from src.data.wikipedia.wiki_data_base import (
     retrive_suitable_strings,
     insert_observations_in_table_mp,
-    WikiArticleNovelty,
+    WikiCosineSimilarity,
     transfer_to_new_db,
-    novelty_data_input_formater,
+    semantic_similarity_data_input_formater,
 )
-from src.characterisation.functions import n_gram_novelty_calculator
 
 # =============================================================================
 # Statics
 # =============================================================================
 
 from src.data.data_statics import (
-    BATCH_SIZE_NOVELTY,
-    NOVELTY_READ_QUE_SIZE,
-    NOVELTY_SQL_QUE_SIZE,
-    NOVELTY_N_PROCESSES,
+    BATCH_SIZE_SEMANTIC_SIMILARITY,
     TEMP_DB,
     SQL_WIKI_DUMP,
+    SEM_SIM_READ_QUE_SIZE,
+    SEM_SIM_SQL_QUE_SIZE,
 )
 
 # =============================================================================
@@ -48,39 +46,13 @@ from src.data.data_statics import (
 # =============================================================================
 
 
-def decode_row(row: list) -> tuple:
-    """
-    Decodes row.
-
-    Returns  (pageid, summary, body_text)
-
-    """
-    return row[0], row[2], "".join(pickle.loads(row[3]))
-
-
-def calculate_novelty(queue_read, queue_sql):
+def process_batch_semantic_similarity(queue_read, queue_sql):
     """Process novelty."""
 
     args = queue_read.get()
 
     while not args is None:
-        sql_args = []
-        for row in args:
-            pageid, summary, body_text = decode_row(row)
-            (
-                novelty_tokens,
-                novelty_bigrams,
-                novelty_trigrams,
-            ) = n_gram_novelty_calculator(summary, body_text)
-
-            sql_sub_args = {
-                "pageid": pageid,
-                "novelty_tokens": novelty_tokens,
-                "novelty_bigrams": novelty_bigrams,
-                "novelty_trigrams": novelty_trigrams,
-            }
-
-            sql_args.append(sql_sub_args)
+        sql_args = compute_semantic_similarity(args)
 
         # Yield results
         queue_sql.put(sql_args)
@@ -89,19 +61,20 @@ def calculate_novelty(queue_read, queue_sql):
 
 def main(queue_read, queue_sql):
     # Create generator to read data from SQL db
-    article_generator = retrive_suitable_strings(batchsize=BATCH_SIZE_NOVELTY)
+    article_generator = retrive_suitable_strings(
+        batchsize=BATCH_SIZE_SEMANTIC_SIMILARITY
+    )
 
-    # Create novelty calculator process
-    novelty_processes = []
-    for _ in range(NOVELTY_N_PROCESSES):
-        p = Process(target=calculate_novelty, args=(queue_read, queue_sql))
-        novelty_processes.append(p)
-        p.start()
+    # Create semantic similarity calculator process
+    process_sem_sim = Process(
+        target=process_batch_semantic_similarity, args=(queue_read, queue_sql)
+    )
+    process_sem_sim.start()
 
     # Create SQL processes
     sql_process = Process(
         target=insert_observations_in_table_mp,
-        args=(queue_sql, WikiArticleNovelty, TEMP_DB),
+        args=(queue_sql, WikiCosineSimilarity, TEMP_DB),
     )
     sql_process.start()
 
@@ -113,23 +86,22 @@ def main(queue_read, queue_sql):
             queue_read.put(args)
 
             # Track progress
-            count_articles += BATCH_SIZE_NOVELTY
-            pbar.update(BATCH_SIZE_NOVELTY)
-            if count_articles % (BATCH_SIZE_NOVELTY * 1) == 0:
+            count_articles += BATCH_SIZE_SEMANTIC_SIMILARITY
+            pbar.update(BATCH_SIZE_SEMANTIC_SIMILARITY)
+            if count_articles % (BATCH_SIZE_SEMANTIC_SIMILARITY * 1) == 0:
                 print(f"{count_articles} articles processed")
 
     # Terminate
-    for _ in range(NOVELTY_N_PROCESSES):
-        queue_read.put(None)
-
-    for p in novelty_processes:
-        p.join()
+    queue_read.put(None)
+    sql_process.join()
 
     queue_sql.put(None)
     sql_process.join()
 
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn")
+
     # https://stackoverflow.com/questions/3172929/operationalerror-database-is-locked
     # Apparently SQL lite does not support concurrent operations so we cant
     # read using a generator and import to the same database since two connections
@@ -137,22 +109,22 @@ if __name__ == "__main__":
     # and then copy the content and delete it.
     start_time = time.time()
 
-    # Make novelty db
-    queue_read = Queue(maxsize=NOVELTY_READ_QUE_SIZE)
-    queue_sql = Queue(maxsize=NOVELTY_SQL_QUE_SIZE)
+    # Make semantic similarity db
+    queue_read = Queue(maxsize=SEM_SIM_READ_QUE_SIZE)
+    queue_sql = Queue(maxsize=SEM_SIM_SQL_QUE_SIZE)
     main(queue_read, queue_sql)
 
     # Transfer to main db
     src_query = """
         SELECT *
-        FROM wiki_article_novelty
+        FROM wiki_article_cosine_similarity
     """
     transfer_to_new_db(
         src_query,
         src_db=TEMP_DB,
         dest_db=SQL_WIKI_DUMP,
-        dest_table=WikiArticleNovelty,
-        batch_formater=novelty_data_input_formater,
+        dest_table=WikiCosineSimilarity,
+        batch_formater=semantic_similarity_data_input_formater,
     )
 
     # Delete temporary db

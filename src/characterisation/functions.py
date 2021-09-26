@@ -10,6 +10,7 @@ Created on Sat Sep 25 16:42:22 2021
 # Imports
 # =============================================================================
 import time
+import pickle
 from datetime import timedelta
 from itertools import zip_longest
 import nltk
@@ -20,7 +21,10 @@ from sentence_transformers import SentenceTransformer, util
 # =============================================================================
 # Statics
 # =============================================================================
-from src.data.data_statics import MODEL_TYPE_SEMANTIC_SIMILARITY
+from src.data.data_statics import (
+    MODEL_TYPE_SEMANTIC_SIMILARITY,
+    BATCH_SIZE_SEMANTIC_SIMILARITY,
+)
 
 ENGLISH_STOPWORDS = set(stopwords.words("english"))
 # nltk.download("wordnet")
@@ -32,41 +36,9 @@ SEMANTIC_SIMILARITY_MODEL = SentenceTransformer(MODEL_TYPE_SEMANTIC_SIMILARITY)
 # =============================================================================
 
 
-def novelty_calculator(summary: str, body: str) -> float:
-    """
-    Calculate novelty, speed: 67.9 it/s .
-
-    Calculates summary novelty by comparing the percentage of new tokens
-    in the summary that dont appear in the body.
-    This is done using a lemmatizer so that grammatical inflections do not
-    affect the text.
-    Furthermore, stopwords are removed.
-
-    Parameters
-    ----------
-    summary : str
-    body : str
-
-    Returns
-    -------
-    float
-        novelty as a fraction.
-
-    """
-    summary = set(nltk.word_tokenize(summary)) - ENGLISH_STOPWORDS
-    body = set(nltk.word_tokenize(body)) - ENGLISH_STOPWORDS
-
-    summary = {LEMMATIZER.lemmatize(word) for word in summary}
-    body = {LEMMATIZER.lemmatize(word) for word in body}
-
-    novel_tokens = summary - body
-    novelty = len(novel_tokens) / len(summary)
-    return novelty
-
-
 def n_gram_novelty_calculator(summary: str, body: str) -> tuple:
     """
-    Calculate novelty for n-grams 1 to 3, speed: 57.28 it/s .
+    Calculate novelty for n-grams 1 to 3.
 
     Calculates summary novelty by comparing the percentage of new tokens
     in the summary that dont appear in the body.
@@ -117,57 +89,35 @@ def n_gram_novelty_calculator(summary: str, body: str) -> tuple:
 # =============================================================================
 # Semantic
 # =============================================================================
-# import pickle
-# from tqdm import tqdm
-# from src.data.wikipedia.wiki_data_base import retrive_suitable_strings
-
-# data = retrive_suitable_strings(limit=100)
-
-# # id, summary, text
-# data_semantic = [[i[0], i[2], pickle.loads(i[3])] for i in data]
 
 
-# to_encode = []
+def compute_semantic_similarity(batch):
+    """Computes semantic similarity between summary and body."""
 
-# for row in tqdm(data_semantic):
-#     summary = row[1]
-#     body = row[2]
-#     # body_sentences = list(itertools.chain(*[tokenize_sentence(i) for i in body]))
-#     body_sentences = "".join(body)
-#     to_encode += [summary]
-#     to_encode += [body_sentences]
+    # Retrieve (id, summary, text)
+    to_encode = []
+    id_list = []
+    for row in batch:
+        id_list.append(row[0])
+        summary = row[2]
+        body = "".join(pickle.loads(row[3]))
+        to_encode += [summary]
+        to_encode += [body]
 
-#     # body_sentences = "".join(body)
+    # Embbed all texts
+    all_embeddings = SEMANTIC_SIMILARITY_MODEL.encode(to_encode, batch_size=100)
+    query_embeddings, passage_embeddings = all_embeddings[::2], all_embeddings[1::2]
+
+    all_similarity = []
+    for idx, (q_emb, p_emb) in enumerate(zip(query_embeddings, passage_embeddings)):
+        semantic_similarity = util.dot_score(q_emb, p_emb).numpy()[0][0]
+        pageid = id_list[idx]
+        all_similarity.append(
+            {"pageid": pageid, "semantic_similarity": semantic_similarity}
+        )
+    return all_similarity
 
 
 # start = time.time()
-# all_embeddings = SEMANTIC_SIMILARITY_MODEL.encode(to_encode, batch_size=100)
-
 # end = time.time()
 # str(timedelta(seconds=end - start))
-
-
-# query_embeddings, passage_embeddings = all_embeddings[::2], all_embeddings[1::2]
-
-
-# all_similarity = []
-# for idx, (q_emb, p_emb) in enumerate(zip(query_embeddings, passage_embeddings)):
-#     print(q_emb)
-#     similarity = util.dot_score(q_emb, p_emb).numpy()[0][0]
-#     print(similarity)
-#     row = data_semantic[idx]
-#     summary = row[1]
-#     body_sentences = "".join(row[2])
-
-#     all_similarity.append([similarity, row[0], summary, body_sentences])
-
-# import pandas as pd
-
-
-# evaluate = [[score, sent] for score, sent in zip(similarity, body_sentences)]
-# import pandas as pd
-
-
-# row_to_look = data_semantic[73]
-# sum_to_look = row_to_look[1]
-# body_to_look = "".join(row_to_look[2])
