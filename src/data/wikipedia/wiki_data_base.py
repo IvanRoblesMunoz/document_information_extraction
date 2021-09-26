@@ -10,10 +10,6 @@ Created on Fri May 21 01:26:02 2021
 # Imports
 # =============================================================================
 import os
-
-# import time
-import itertools
-
 import sqlite3
 
 from sqlalchemy import (
@@ -22,16 +18,22 @@ from sqlalchemy import (
     Integer,
     Text,
     LargeBinary,
-    ForeignKey,
+    # ForeignKey,
     Float,
 )
-from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker  # , relationship
+from sqlalchemy.orm import sessionmaker
 
-
+# =============================================================================
+# Statics
+# =============================================================================
+from src.data.data_statics import SQL_WIKI_DUMP
 from src.data.data_statics import (
-    SQL_WIKI_DUMP,
+    MIN_TOKENS_SUMMARY,
+    MAX_TOKENS_SUMMARY,
+    MIN_TOKENS_BODY,
+    MIN_COMPRESION_RATIO,
+    MAX_COMPRESION_RATIO,
 )
 
 # =============================================================================
@@ -59,24 +61,30 @@ class ArticleLevelInfo(Base):
     __tablename__ = "article_level_info"
     __table_args__ = {"extend_existing": True}
 
-    pageid = Column(
-        "pageid", Integer, ForeignKey("wiki_articles.pageid"), primary_key=True
-    )
-    title = Column("title", Text, unique=False)
-    summary_word_count = Column("summary_word_count", Integer, unique=False)
-    body_word_count = Column("body_word_count", Integer, unique=False)
+    pageid = Column("pageid", Integer, primary_key=True)
+    title = Column("title", Float, unique=False)
+    summary_word_count = Column("summary_word_count", Float, unique=False)
+    body_word_count = Column("body_word_count", Float, unique=False)
 
-    wiki_article = relationship(WikiArticles, uselist=False)
+
+class WikiArticleNovelty(Base):
+    """Article database."""
+
+    __tablename__ = "wiki_article_novelty"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    novelty_tokens = Column("novelty_tokens", Text, unique=False)
+    novelty_bigrams = Column("novelty_bigrams", Integer, unique=False)
+    novelty_trigrams = Column("novelty_trigrams", Integer, unique=False)
 
 
 def get_connection(out_f=SQL_WIKI_DUMP):
     """Get connection to database."""
     engine = create_engine(f"sqlite:///{str(out_f)}", echo=True)
     Base.metadata.create_all(bind=engine)
-    Session = sessionmaker(bind=engine)
-
-    # Insert stuff
-    session = Session()
+    session = sessionmaker(bind=engine)
+    session = session()
     return engine, session
 
 
@@ -114,6 +122,31 @@ def create_wiki_data_base(queue_sql, out_f=SQL_WIKI_DUMP):
         sql_args = queue_sql.get()
 
 
+def insert_observations_in_table_mp(queue_sql, table, out_f=SQL_WIKI_DUMP):
+    """
+    Insert observations into table using  multiprocessing.
+
+    It will delete the database if it exists.
+    """
+    # If database exists delete and create again
+    if os.path.exists(out_f):
+        os.remove(out_f)
+
+    engine, session = get_connection(out_f=out_f)
+    # Get arguments
+    sql_args = queue_sql.get()
+
+    while sql_args is not None:
+        print("-" * 50)
+        # Insert text data
+        engine.execute(table.__table__.insert(), sql_args)
+        session.commit()
+        session.close()
+
+        # Get next batch
+        sql_args = queue_sql.get()
+
+
 # =============================================================================
 # Output
 # =============================================================================
@@ -131,29 +164,144 @@ def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
     return rows
 
 
-# def retrive_suitable_column_ids(
-#     out_f: str = SQL_WIKI_DUMP,
-#     min_summary: int = MIN_TOKENS_SUMMARY,
-#     max_body: int = MAX_TOKENS_BODY,
-#     min_ratio: float = MIN_SUMMARY_RATIO,
-#     max_ratio: float = MAX_SUMMARY_RATIO,
-#     limit_ids: int = None,
-# ) -> list:
-#     """Obtain a list of article ids based on character length of summary and body."""
-#     query = f"""
-#         SELECT pageid
-#         FROM article_length
-#         WHERE n_tokens_summary >= {min_summary}
-#             AND n_tokens_text <= {max_body}
-#             AND CAST( n_tokens_summary AS FLOAT)/ CAST( n_tokens_text AS FLOAT) >= {min_ratio}
-#             AND CAST( n_tokens_summary AS FLOAT)/CAST( n_tokens_text AS FLOAT) <= {max_ratio}
+def retrieve_query_in_batches(
+    query: tuple, out_f: str = SQL_WIKI_DUMP, batchsize: int = 1
+):
+    """Retrieve query from database in batches."""
+    conn = sqlite3.connect(out_f)
+    cur = conn.cursor()
+    if type(query) == str:
+        cur.execute(query)
+    else:
+        cur.execute(*query)
+    while True:
+        batch = cur.fetchmany(batchsize)
+        if not batch:
+            break
 
-#         """
-#     if not limit_ids is None:
-#         query += f"LIMIT {limit_ids}"
-#     rows = retrieve_query(query, out_f)
-#     suitable_entries = [page_id[0] for page_id in rows]
-#     return suitable_entries
+        yield batch
+
+
+def retrive_suitable_strings(
+    out_f: str = SQL_WIKI_DUMP,
+    limit: int = None,
+    min_tokens_summary: int = MIN_TOKENS_SUMMARY,
+    max_tokens_summary: int = MAX_TOKENS_SUMMARY,
+    min_tokens_body: int = MIN_TOKENS_BODY,
+    min_ratio: float = MIN_COMPRESION_RATIO,
+    max_ratio: float = MAX_COMPRESION_RATIO,
+    retrieve_method: str = "Full",
+    batchsize: int = 1,
+) -> list:
+    """Obtain a list of article ids based on character length of summary and body."""
+
+    query = f"""
+            SELECT wk.*
+            FROM article_level_info ar
+            LEFT JOIN wiki_articles wk 
+                ON ar.pageid = wk.pageid
+            WHERE body_word_count>={min_tokens_body} 
+                AND summary_word_count>={min_tokens_summary}
+                AND summary_word_count<={max_tokens_summary}
+                AND CAST( summary_word_count AS FLOAT)/ CAST( body_word_count AS FLOAT) >= {min_ratio}
+                AND CAST( summary_word_count AS FLOAT)/CAST( body_word_count AS FLOAT) <= {max_ratio}
+            """
+    if not limit is None:
+        query += f"LIMIT {limit}"
+
+    if retrieve_method == "Full":
+        rows = retrieve_query(query, out_f)
+        return rows
+
+    elif retrieve_method == "Batches":
+        for rows in retrieve_query_in_batches(query, out_f, batchsize=batchsize):
+            yield rows
+    else:
+        raise Exception(
+            f"{retrieve_method} not supported, please use 'Full' or 'Batches'"
+        )
+
+
+# =============================================================================
+# Transfer
+# =============================================================================
+
+
+def novelty_data_input_formater(batch):
+    """Formats data produced by generator for novelty data to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "novelty_tokens": obs[1],
+            "novelty_bigrams": obs[2],
+            "novelty_trigrams": obs[3],
+        }
+        for obs in batch
+    ]
+
+
+def insert_into_db(generator, table, dest_db, batch_formater):
+    """Insert data into database without deleting original table or db."""
+    # Connect
+    engine, session = get_connection(dest_db)
+
+    # Insert all
+    for batch in generator:
+        # Insert text data
+        engine.execute(table.__table__.insert(), batch_formater(batch))
+        session.commit()
+        session.close()
+
+
+def transfer_to_new_db(
+    src_query, src_db, dest_db, dest_table, batch_formater, batchsize=10000
+):
+    """Transfers data from one database to another."""
+    # Get data we want to transfer
+    transfer_generator = retrieve_query_in_batches(
+        query=src_query,
+        out_f=src_db,
+        batchsize=batchsize,
+    )
+
+    # Insert data we want to insert
+    insert_into_db(
+        transfer_generator,
+        dest_table,
+        dest_db,
+        batch_formater=batch_formater,
+    )
+
+
+# import sys
+
+# def open_db(db):
+#     conn = sqlite3.connect(db)
+#     # Let rows returned be of dict/tuple type
+#     conn.row_factory = sqlite3.Row
+
+#     return conn
+
+# def copy_table(table, src, dest,batchsize=10000):
+#     print(f"Copying table: {table} from {src} to {dest}")
+#     sc = src.execute(f'SELECT * FROM %s' % table)
+#     ins = None
+#     dc = dest.cursor()
+#     for row in sc.fetchmany(batchsize):
+#         if not ins:
+#             cols = tuple([k for k in row.keys() if k != 'id'])
+#             ins = 'INSERT OR REPLACE INTO %s %s VALUES (%s)' % (table, cols,
+#                                                      ','.join(['?'] * len(cols)))
+#             print 'INSERT stmt = ' + ins
+#         c = [row[c] for c in cols]
+#         dc.execute(ins, c)
+
+#     dest.commit()
+
+# src_conn  = open_db(sys.argv[1])
+# dest_conn = open_db(sys.argv[2])
+
+# copy_table('audit', src_conn, dest_conn)
 
 
 # def retrive_observations_from_ids(

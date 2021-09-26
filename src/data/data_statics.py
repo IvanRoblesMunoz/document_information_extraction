@@ -20,28 +20,34 @@ DATA_PATH = WORKING_DIRECTORY / "data"
 RAW_DATA_PATH = DATA_PATH / "raw"
 INTERIM_DATA_PATH = DATA_PATH / "interim"
 RAW_WIKIPEDIA_CORPUS = RAW_DATA_PATH / "enwiki-latest-pages-articles.xml.bz2"
-DECOMPRESSED_WIKIPEDIA_DUMP = RAW_DATA_PATH / "enwiki-latest-pages-articles.xml"
-SQL_WIKI_DUMP = INTERIM_DATA_PATH / "wiki_db_dumps_test.db"
+
 # =============================================================================
 # Wikipedia parsing constants
 # =============================================================================
-READ_QUE_SIZE = 1  # os.cpu_count()
-SQL_QUE_SIZE = 1  # os.cpu_count()
+SQL_WIKI_DUMP = INTERIM_DATA_PATH / "wiki_db_dumps.db"
+READ_QUE_SIZE = 1
+SQL_QUE_SIZE = 1
 N_PROCESSES = os.cpu_count()
 BATCH_SIZE = 10000
 
 # =============================================================================
-# Wiki SQL dump constants
+# Summary suitability constants
 # =============================================================================
 MIN_TOKENS_SUMMARY = 40
+MAX_TOKENS_SUMMARY = 512
 MIN_TOKENS_BODY = 250
 MIN_COMPRESION_RATIO = 0.05
-MAX_COMPRESION_RATIO = 0.4
+MAX_COMPRESION_RATIO = 0.3
 
 # =============================================================================
-# Bert score constants
+# Dataset characterisation constants
 # =============================================================================
-MODEL_TYPE = "allenai/led-base-16384"
-NUM_LAYERS = 6
-ALL_LAYERS = False
-LANGUAGE = "en"
+# We will use this model, since it is the second highest rank and it accepts
+# a larger input size than the highest ranked ()
+MODEL_TYPE_SEMANTIC_SIMILARITY = "all-mpnet-base-v1"
+BATCH_SIZE_SEMANTIC_SIMILARITY = 500
+BATCH_SIZE_NOVELTY = 1000
+SEMANTIC_SIMILARITY_TEMP_DB = INTERIM_DATA_PATH / "temp_novelty.db"
+SEMANTIC_SIM_READ_QUE_SIZE = 1
+SEMANTIC_SIM_SQL_QUE_SIZE = 1
+SEMANTIC_SIM_N_PROCESSES = os.cpu_count()

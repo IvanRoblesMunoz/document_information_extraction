@@ -20,15 +20,12 @@ import bz2
 from multiprocessing import Process, Queue
 from itertools import zip_longest
 from tqdm import tqdm
+import nltk
+from gensim.corpora.wikicorpus import iterparse, filter_wiki, remove_markup
 
 WORKING_DIRECTORY = Path(os.getcwd())
 sys.path.append(str(WORKING_DIRECTORY))
 
-import nltk
-from gensim.corpora.wikicorpus import (
-    iterparse,
-)
-from gensim.corpora.wikicorpus import filter_wiki, remove_markup
 
 from src.data.wikipedia.wiki_data_base import create_wiki_data_base
 
@@ -177,6 +174,7 @@ def deal_with_sections(text: str) -> list:
 
 
 def format_sql_sub_args(section_level_output, article_level_output):
+    """Format sub args into SQL input."""
     section_level_output = [
         {
             "pageid": section_level_output[0],
@@ -199,6 +197,7 @@ def format_sql_sub_args(section_level_output, article_level_output):
 
 
 def my_process_article(queue_read, queue_sql):
+    """Perform article processing steps."""
 
     args = queue_read.get()
     while args is not None:
@@ -317,7 +316,6 @@ class MyWikiCorpus:
             # p.terminate()
             p.join()
 
-        print("waiting 10 seconds")
         queue_sql.put(None)
         # sql_process.terminate()
         sql_process.join()
