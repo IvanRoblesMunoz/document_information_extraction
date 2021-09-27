@@ -44,8 +44,9 @@ MAX_COMPRESION_RATIO = 0.3
 # =============================================================================
 # We will use this model, since it is the second highest rank and it accepts
 # a larger input size than the highest ranked ()
+MAX_MODEL_SQUENCE_LENGTH = 512
 MODEL_TYPE_SEMANTIC_SIMILARITY = "all-mpnet-base-v1"
-BATCH_SIZE_SEMANTIC_SIMILARITY = 500
+BATCH_SIZE_SEMANTIC_SIMILARITY = 1000
 SEM_SIM_READ_QUE_SIZE = 5
 SEM_SIM_SQL_QUE_SIZE = 5
 
@@ -55,3 +56,14 @@ NOVELTY_SQL_QUE_SIZE = 1
 NOVELTY_N_PROCESSES = os.cpu_count()
 
 TEMP_DB = INTERIM_DATA_PATH / "temp_database.db"
+
+# --- Bertscore statics ---
+# We will use the highest performing model that has an input length long enough
+# for our task.
+# Perfromance link: https://docs.google.com/spreadsheets/d/1RKOVpselB98Nnh_EOC4A2BYn8_201tmPODpNWu4w7xI/edit?usp=sharing
+# Berstcore link: https://github.com/Tiiiger/bert_score
+
+BERTSCORE_MODEL = "allenai/led-base-16384"
+BERTSCORE_MODEL_LAYER = 6
+BERTSCORE_LANGUAGE = "en"
+BERTSCORE_ALL_LAYERS = False
