@@ -20,7 +20,10 @@ from tqdm import tqdm
 WORKING_DIRECTORY = Path(os.getcwd())
 sys.path.append(str(WORKING_DIRECTORY))
 
-from src.characterisation.functions import compute_semantic_similarity
+from src.characterisation.functions import (
+    compute_semantic_similarity,
+    prepare_batch_data,
+)
 from src.data.wikipedia.wiki_data_base import (
     retrive_suitable_strings,
     insert_observations_in_table_mp,
@@ -39,6 +42,8 @@ from src.data.data_statics import (
     SQL_WIKI_DUMP,
     SEM_SIM_READ_QUE_SIZE,
     SEM_SIM_SQL_QUE_SIZE,
+    SEM_SIM_PREP_QUE_SIZE,
+    SEM_SIM_N_PROCESSES,
 )
 
 # =============================================================================
@@ -46,20 +51,33 @@ from src.data.data_statics import (
 # =============================================================================
 
 
-def process_batch_semantic_similarity(queue_read, queue_sql):
+def process_batch_prep(queue_read, queue_prep):
+    """Preprocess args by summarising body to produce batch."""
+
+    batch = queue_read.get()
+
+    while not batch is None:
+        encoding_batch = prepare_batch_data(batch)
+
+        # Yield results
+        queue_prep.put((encoding_batch))
+        batch = queue_read.get()
+
+
+def process_batch_semantic_similarity(queue_prep, queue_sql):
     """Process novelty."""
 
-    args = queue_read.get()
+    encoding_batch = queue_prep.get()
 
-    while not args is None:
-        sql_args = compute_semantic_similarity(args)
+    while not encoding_batch is None:
+        sql_args = compute_semantic_similarity(encoding_batch)
 
         # Yield results
         queue_sql.put(sql_args)
-        args = queue_read.get()
+        encoding_batch = queue_prep.get()
 
 
-def main(queue_read, queue_sql):
+def main(queue_read, queue_prep, queue_sql, n_processes):
     # Create generator to read data from SQL db
     article_generator = retrive_suitable_strings(
         batchsize=BATCH_SIZE_SEMANTIC_SIMILARITY
@@ -67,9 +85,15 @@ def main(queue_read, queue_sql):
 
     # Create semantic similarity calculator process
     process_sem_sim = Process(
-        target=process_batch_semantic_similarity, args=(queue_read, queue_sql)
+        target=process_batch_semantic_similarity, args=(queue_prep, queue_sql)
     )
     process_sem_sim.start()
+
+    batch_process_list = []
+    for p in range(n_processes):
+        p = Process(target=process_batch_prep, args=(queue_read, queue_prep))
+        batch_process_list.append(p)
+        p.start()
 
     # Create SQL processes
     sql_process = Process(
@@ -81,7 +105,7 @@ def main(queue_read, queue_sql):
     # put data into the read queue
     count_articles = 0
     # I know that there are ~1.5M suitable articles but this is not necessarilly correct
-    with tqdm(total=1.5e6) as pbar:
+    with tqdm(total=1.4e6) as pbar:
         for args in article_generator:
             queue_read.put(args)
 
@@ -95,6 +119,11 @@ def main(queue_read, queue_sql):
     queue_read.put(None)
     sql_process.join()
 
+    for _ in batch_process_list:
+        queue_prep.put(None)
+    for p in batch_process_list:
+        p.join()
+
     queue_sql.put(None)
     sql_process.join()
 
@@ -106,13 +135,15 @@ if __name__ == "__main__":
     # Apparently SQL lite does not support concurrent operations so we cant
     # read using a generator and import to the same database since two connections
     # will be required to the database. Instead we will create a temporary db
-    # and then copy the content and delete it.
+    # # and then copy the content and delete it.
+
     start_time = time.time()
 
     # Make semantic similarity db
     queue_read = Queue(maxsize=SEM_SIM_READ_QUE_SIZE)
+    queue_prep = Queue(maxsize=SEM_SIM_PREP_QUE_SIZE)
     queue_sql = Queue(maxsize=SEM_SIM_SQL_QUE_SIZE)
-    main(queue_read, queue_sql)
+    main(queue_read, queue_prep, queue_sql, SEM_SIM_N_PROCESSES)
 
     # Transfer to main db
     src_query = """

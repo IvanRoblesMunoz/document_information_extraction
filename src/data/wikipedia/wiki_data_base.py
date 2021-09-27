@@ -192,6 +192,7 @@ def retrieve_query_in_batches(
         yield batch
 
 
+# TODO: remove filter for already processed rows
 def retrive_suitable_strings(
     out_f: str = SQL_WIKI_DUMP,
     limit: int = None,
@@ -213,6 +214,7 @@ def retrive_suitable_strings(
                 AND summary_word_count<={max_tokens_summary}
                 AND CAST( summary_word_count AS FLOAT)/ CAST( body_word_count AS FLOAT) >= {min_ratio}
                 AND CAST( summary_word_count AS FLOAT)/CAST( body_word_count AS FLOAT) <= {max_ratio}
+               
             """
     if not limit is None:
         query += f"LIMIT {limit}"

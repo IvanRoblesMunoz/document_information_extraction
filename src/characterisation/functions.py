@@ -99,9 +99,23 @@ def n_gram_novelty_calculator(summary: str, body: str) -> tuple:
 # =============================================================================
 # Semantic
 # =============================================================================
+from src.data.wikipedia.wiki_data_base import retrive_suitable_strings
+
+batch_generator = retrive_suitable_strings(limit=100, batchsize=5)
+
+for batch in batch_generator:
+    pass
 
 
-def summarise(batch):
+def prepare_batch_data(batch):
+    """
+    Prepare data batch.
+
+    Perform extractive summarisation of body to fit into our model without
+    truncating it.
+    Also pass output as required by the function.
+
+    """
     # Retrieve (id, summary, text)
     to_encode = []
     id_list = []
@@ -109,14 +123,19 @@ def summarise(batch):
         id_list.append(row[0])
         summary = row[2]
         body = "".join(pickle.loads(row[3]))
-        body = summarize(body, word_count=MAX_MODEL_SQUENCE_LENGTH)
+        try:
+            # If there is only one sentence a ValueError will be thrown
+            body = summarize(body, word_count=MAX_MODEL_SQUENCE_LENGTH)
+        except ValueError:
+            pass
         to_encode += [summary]
         to_encode += [body]
 
-    return to_encode
+    encoding_batch = to_encode, id_list
+    return encoding_batch
 
 
-def compute_semantic_similarity(batch):
+def compute_semantic_similarity(encoding_batch):
     """
     Computes semantic similarity between summary and body.
 
@@ -126,16 +145,7 @@ def compute_semantic_similarity(batch):
 
     """
 
-    # Retrieve (id, summary, text)
-    to_encode = []
-    id_list = []
-    for row in batch:
-        id_list.append(row[0])
-        summary = row[2]
-        body = "".join(pickle.loads(row[3]))
-        body = summarize(body, word_count=MAX_MODEL_SQUENCE_LENGTH)
-        to_encode += [summary]
-        to_encode += [body]
+    to_encode, id_list = encoding_batch
 
     # Embbed all texts
     all_embeddings = SEMANTIC_SIMILARITY_MODEL.encode(to_encode, batch_size=100)
