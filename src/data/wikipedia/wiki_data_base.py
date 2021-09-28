@@ -79,6 +79,16 @@ class WikiArticleNovelty(Base):
     novelty_trigrams = Column("novelty_trigrams", Integer, unique=False)
 
 
+class WikiCosineSimilarity(Base):
+    """Article cosine similarty."""
+
+    __tablename__ = "wiki_article_cosine_similarity"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    semantic_similarity = Column("semantic_similarity", Float, unique=False)
+
+
 def get_connection(out_f=SQL_WIKI_DUMP):
     """Get connection to database."""
     engine = create_engine(f"sqlite:///{str(out_f)}", echo=True)
@@ -154,7 +164,7 @@ def insert_observations_in_table_mp(queue_sql, table, out_f=SQL_WIKI_DUMP):
 
 def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
     """Retrieve query from database."""
-    conn = sqlite3.connect(out_f)
+    conn = sqlite3.connect(str(out_f))
     cur = conn.cursor()
     if type(query) == str:
         cur.execute(query)
@@ -182,6 +192,7 @@ def retrieve_query_in_batches(
         yield batch
 
 
+# TODO: remove filter for already processed rows
 def retrive_suitable_strings(
     out_f: str = SQL_WIKI_DUMP,
     limit: int = None,
@@ -190,36 +201,27 @@ def retrive_suitable_strings(
     min_tokens_body: int = MIN_TOKENS_BODY,
     min_ratio: float = MIN_COMPRESION_RATIO,
     max_ratio: float = MAX_COMPRESION_RATIO,
-    retrieve_method: str = "Full",
     batchsize: int = 1,
 ) -> list:
     """Obtain a list of article ids based on character length of summary and body."""
-
     query = f"""
             SELECT wk.*
             FROM article_level_info ar
-            LEFT JOIN wiki_articles wk 
+            INNER JOIN wiki_articles wk 
                 ON ar.pageid = wk.pageid
             WHERE body_word_count>={min_tokens_body} 
                 AND summary_word_count>={min_tokens_summary}
                 AND summary_word_count<={max_tokens_summary}
                 AND CAST( summary_word_count AS FLOAT)/ CAST( body_word_count AS FLOAT) >= {min_ratio}
                 AND CAST( summary_word_count AS FLOAT)/CAST( body_word_count AS FLOAT) <= {max_ratio}
+               
             """
     if not limit is None:
         query += f"LIMIT {limit}"
 
-    if retrieve_method == "Full":
-        rows = retrieve_query(query, out_f)
-        return rows
+    for rows in retrieve_query_in_batches(query, out_f, batchsize=batchsize):
 
-    elif retrieve_method == "Batches":
-        for rows in retrieve_query_in_batches(query, out_f, batchsize=batchsize):
-            yield rows
-    else:
-        raise Exception(
-            f"{retrieve_method} not supported, please use 'Full' or 'Batches'"
-        )
+        yield rows
 
 
 # =============================================================================
@@ -235,6 +237,17 @@ def novelty_data_input_formater(batch):
             "novelty_tokens": obs[1],
             "novelty_bigrams": obs[2],
             "novelty_trigrams": obs[3],
+        }
+        for obs in batch
+    ]
+
+
+def semantic_similarity_data_input_formater(batch):
+    """Formats data produced by generator for novelty data to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "semantic_similarity": obs[1],
         }
         for obs in batch
     ]
@@ -273,35 +286,9 @@ def transfer_to_new_db(
     )
 
 
-# import sys
-
-# def open_db(db):
-#     conn = sqlite3.connect(db)
-#     # Let rows returned be of dict/tuple type
-#     conn.row_factory = sqlite3.Row
-
-#     return conn
-
-# def copy_table(table, src, dest,batchsize=10000):
-#     print(f"Copying table: {table} from {src} to {dest}")
-#     sc = src.execute(f'SELECT * FROM %s' % table)
-#     ins = None
-#     dc = dest.cursor()
-#     for row in sc.fetchmany(batchsize):
-#         if not ins:
-#             cols = tuple([k for k in row.keys() if k != 'id'])
-#             ins = 'INSERT OR REPLACE INTO %s %s VALUES (%s)' % (table, cols,
-#                                                      ','.join(['?'] * len(cols)))
-#             print 'INSERT stmt = ' + ins
-#         c = [row[c] for c in cols]
-#         dc.execute(ins, c)
-
-#     dest.commit()
-
-# src_conn  = open_db(sys.argv[1])
-# dest_conn = open_db(sys.argv[2])
-
-# copy_table('audit', src_conn, dest_conn)
+# =============================================================================
+# Old
+# =============================================================================
 
 
 # def retrive_observations_from_ids(
@@ -334,25 +321,3 @@ def transfer_to_new_db(
 
 #     relevant_obs = list(itertools.chain(*relevant_obs))
 #     return relevant_obs
-
-
-# query = """
-# SELECT wk.*
-# FROM article_level_info ar
-# LEFT JOIN wiki_articles wk
-#     ON ar.pageid = wk.pageid
-# WHERE ar.body_word_count>15 and ar.summary_word_count>150
-# LIMIT 25
-
-# """
-# import pickle
-
-# data = retrieve_query(query)
-# for row in data:
-#     pageid = row[0]
-#     section_titles = pickle.loads(row[1])
-#     summary = row[2]
-#     section_word_count = pickle.loads(row[3])
-#     body_sections = pickle.loads(row[4])
-
-#     check = pageid, section_titles, summary, section_word_count, body_sections

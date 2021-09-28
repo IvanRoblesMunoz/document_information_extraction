@@ -36,11 +36,10 @@ from src.characterisation.functions import n_gram_novelty_calculator
 
 from src.data.data_statics import (
     BATCH_SIZE_NOVELTY,
-    SEMANTIC_SIMILARITY_TEMP_DB,
-    SEMANTIC_SIM_READ_QUE_SIZE,
-    SEMANTIC_SIM_SQL_QUE_SIZE,
-    SEMANTIC_SIM_N_PROCESSES,
-    SEMANTIC_SIMILARITY_TEMP_DB,
+    NOVELTY_READ_QUE_SIZE,
+    NOVELTY_SQL_QUE_SIZE,
+    NOVELTY_N_PROCESSES,
+    TEMP_DB,
     SQL_WIKI_DUMP,
 )
 
@@ -90,13 +89,11 @@ def calculate_novelty(queue_read, queue_sql):
 
 def main(queue_read, queue_sql):
     # Create generator to read data from SQL db
-    article_generator = retrive_suitable_strings(
-        retrieve_method="Batches", batchsize=BATCH_SIZE_NOVELTY
-    )
+    article_generator = retrive_suitable_strings(batchsize=BATCH_SIZE_NOVELTY)
 
     # Create novelty calculator process
     novelty_processes = []
-    for _ in range(SEMANTIC_SIM_N_PROCESSES):
+    for _ in range(NOVELTY_N_PROCESSES):
         p = Process(target=calculate_novelty, args=(queue_read, queue_sql))
         novelty_processes.append(p)
         p.start()
@@ -104,7 +101,7 @@ def main(queue_read, queue_sql):
     # Create SQL processes
     sql_process = Process(
         target=insert_observations_in_table_mp,
-        args=(queue_sql, WikiArticleNovelty, SEMANTIC_SIMILARITY_TEMP_DB),
+        args=(queue_sql, WikiArticleNovelty, TEMP_DB),
     )
     sql_process.start()
 
@@ -122,7 +119,7 @@ def main(queue_read, queue_sql):
                 print(f"{count_articles} articles processed")
 
     # Terminate
-    for _ in range(SEMANTIC_SIM_N_PROCESSES):
+    for _ in range(NOVELTY_N_PROCESSES):
         queue_read.put(None)
 
     for p in novelty_processes:
@@ -141,8 +138,8 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # Make novelty db
-    queue_read = Queue(maxsize=SEMANTIC_SIM_READ_QUE_SIZE)
-    queue_sql = Queue(maxsize=SEMANTIC_SIM_SQL_QUE_SIZE)
+    queue_read = Queue(maxsize=NOVELTY_READ_QUE_SIZE)
+    queue_sql = Queue(maxsize=NOVELTY_SQL_QUE_SIZE)
     main(queue_read, queue_sql)
 
     # Transfer to main db
@@ -152,15 +149,15 @@ if __name__ == "__main__":
     """
     transfer_to_new_db(
         src_query,
-        src_db=SEMANTIC_SIMILARITY_TEMP_DB,
+        src_db=TEMP_DB,
         dest_db=SQL_WIKI_DUMP,
         dest_table=WikiArticleNovelty,
         batch_formater=novelty_data_input_formater,
     )
 
     # Delete temporary db
-    if os.path.exists(SEMANTIC_SIMILARITY_TEMP_DB):
-        os.remove(SEMANTIC_SIMILARITY_TEMP_DB)
+    if os.path.exists(TEMP_DB):
+        os.remove(TEMP_DB)
 
     end_time = time.time()
     print("finished in: ", str(timedelta(seconds=end_time - start_time)))
