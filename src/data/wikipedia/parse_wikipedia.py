@@ -168,6 +168,8 @@ def deal_with_sections(text: str) -> list:
         " " + text
     )  # To avoid errors where there might not be a summary, we will add a single blank space
     text = re.split(RE_SPLIT_SUMMARY, text)  # Split text
+
+    # TODO: check if it is better to remove this before
     text = [remove_markup(section) for section in text]
     text = ["Summary_Target"] + text
     return text
