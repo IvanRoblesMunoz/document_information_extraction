@@ -116,13 +116,13 @@ def main(queue_read, queue_prep, queue_sql, n_processes):
                 print(f"{count_articles} articles processed")
 
     # Terminate
-    queue_read.put(None)
-    sql_process.join()
-
     for _ in batch_process_list:
-        queue_prep.put(None)
+        queue_read.put(None)
     for p in batch_process_list:
         p.join()
+
+    queue_prep.put(None)
+    process_sem_sim.join()
 
     queue_sql.put(None)
     sql_process.join()

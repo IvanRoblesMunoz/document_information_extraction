@@ -62,9 +62,9 @@ class ArticleLevelInfo(Base):
     __table_args__ = {"extend_existing": True}
 
     pageid = Column("pageid", Integer, primary_key=True)
-    title = Column("title", Float, unique=False)
-    summary_word_count = Column("summary_word_count", Float, unique=False)
-    body_word_count = Column("body_word_count", Float, unique=False)
+    title = Column("title", Text, unique=False)
+    summary_word_count = Column("summary_word_count", Integer, unique=False)
+    body_word_count = Column("body_word_count", Integer, unique=False)
 
 
 class WikiArticleNovelty(Base):

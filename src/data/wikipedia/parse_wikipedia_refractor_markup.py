@@ -25,8 +25,6 @@ from gensim.corpora.wikicorpus import (
     iterparse,
     filter_wiki,
     remove_markup,
-    remove_template,
-    remove_file,
     RE_P0,
     RE_P1,
     RE_P2,
@@ -86,19 +84,8 @@ RE_TO_REMOVE = re.compile("|".join([f"[{i}]" for i in TO_REMOVE]))  # Values to 
 RE_SPLIT_SUMMARY = re.compile("== *(.*?) *==")  # split sections
 
 # Other markup
-def tag_template(tag):
-    return f"(<{tag}(.|\n)*?>(.|\n)*?<\/{tag}>)"
-
-
-unwanted_tags = ["imagemap", "timeline", "gallery"]
-"|".join([tag_template(tag) for tag in unwanted_tags])
-
-RE_REMOVE_UNWANTED_TAGS = re.compile(
-    "|".join([tag_template(tag) for tag in unwanted_tags])
-)
-
-RE_TABLES = re.compile("(\{\|\ *?class=(.|\n)*?table(.|\n)*?\n\|\})")
-RE_REMOVE_INFO_BOX = re.compile("(\{\{ *?Infobox(.|\n)*?\n\}\})")
+RE_REMOVE_IMAGE_MAP = re.compile("(<imagemap>(.|\n)*?<\/imagemap>)")
+RE_TABLES = re.compile('(\{\|\ *?class="(.|\n)*?wikitable(.|\n)*?"(.|\n)*?\|\})')
 
 
 # =============================================================================
@@ -130,16 +117,12 @@ def my_remove_markup(text):
     # instead of writing a recursive grammar, here we deal with that by removing
     # markup in a loop, starting with inner-most expressions and working outwards,
     # for as long as something changes.
-    text = remove_template(text)
-    text = remove_file(text)
-
-    text = re.sub(RE_REMOVE_UNWANTED_TAGS, "", text)
-    text = re.sub(RE_TABLES, "", text)
-    text = re.sub(RE_REMOVE_INFO_BOX, "", text)
-
     iters = 0
     while True:
         old, iters = text, iters + 1
+        # TODO: Check that this works, im removing tables
+        text = re.sub(RE_TABLES, "", text)
+        text = re.sub(RE_REMOVE_IMAGE_MAP, "", text)
 
         text = re.sub(RE_P0, "", text)  # remove comments
         text = re.sub(RE_P1, "", text)  # remove footnotes
@@ -149,20 +132,24 @@ def my_remove_markup(text):
         # remove templates (no recursion)
         text = re.sub(RE_P3, "", text)
         text = re.sub(RE_P4, "", text)
-
         text = re.sub(RE_P14, "", text)  # remove categories
         text = re.sub(RE_P15, "", text)  # Remove File and Image template
         text = re.sub(RE_P5, "\\3", text)  # remove urls, keep description
         text = re.sub(RE_P6, "\\2", text)  # simplify links, keep description only
-        text = re.sub(RE_P7, "", text)  # simplify images, don't keep description
-        text = re.sub(RE_P8, "", text)  # simplify files, don't keep description
+        text = re.sub(RE_P7, "", text)  # simplify images, don't keep description only
+        text = re.sub(RE_P8, "", text)  # simplify files, don't keep description only
+        # remove table markup
 
+        # TODO: Check why I get so many unwanted spaces
+
+        text = re.sub(RE_TABLES, "", text)
+        text = re.sub(RE_REMOVE_IMAGE_MAP, "", text)
         text = re.sub(RE_P12, "\n", text)  # remove formatting lines
         text = re.sub(RE_P13, "\n\\3", text)  # leave only cell content
         # remove empty mark-up
         text = text.replace("[]", "")
         if (
-            old == text or iters > 3
+            old == text or iters > 2
         ):  # stop if nothing changed between two iterations or after a fixed number of iterations
             break
 
@@ -287,8 +274,10 @@ def format_sql_sub_args(section_level_output, article_level_output):
     return section_level_output, article_level_output
 
 
+# # Add how to remove tables
+# RE_TABLES = re.compile('(\{\|\ *?class="(.|\n)*?wikitable(.|\n)*?"(.|\n)*?\|\})')
 # matches = re.findall(RE_P8, text)
-# text = "".join(text)
+# texta = "".join(text)
 
 
 def my_process_article(queue_read, queue_sql):
@@ -305,7 +294,9 @@ def my_process_article(queue_read, queue_sql):
             # sub_arg = args[5]
             text, title, pageid = sub_arg
 
-            # if title == "Flag of Europe":  # Alabama Abraham Lincoln Andre Agassi
+            # if title == "Albedo":  # Alabama
+            # Historical racial demographics
+            # if title == "Abraham Lincoln":
             #     break
 
             # Preprocessing
@@ -398,7 +389,7 @@ class MyWikiCorpus:
 
         # put data into the read queue
         count_articles = 0
-        with tqdm(total=21e6) as pbar:
+        with tqdm(total=100) as pbar:
             for args in grouper(texts_generator, batch_size=BATCH_SIZE):
                 # break
                 self.queue_read.put(args)
