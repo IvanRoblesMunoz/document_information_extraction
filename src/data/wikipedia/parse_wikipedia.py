@@ -246,10 +246,7 @@ def deal_with_sections(text: str) -> list:
     """
 
     text = re.split(REMOVE_REF, text)[0]  # Remove referemnces
-    text = re.sub(RE_REMOVE_H2PLUS, r"\1" + ".", text)  # remove headings H2+
-    text = re.sub(
-        RE_MULTIPLE_SPACES, r"\n\n", text
-    )  # Make multispaces into single space
+    text = re.sub(RE_REMOVE_H2PLUS, "", text)  # remove headings H2+
     text = re.sub(
         RE_NON_MEANINGFUL_APOSTROPHE, r"\1\2\3", text
     )  # Remove non meaningful apostrophes
@@ -257,6 +254,9 @@ def deal_with_sections(text: str) -> list:
     text = (
         " " + text
     )  # To avoid errors where there might not be a summary, we will add a single blank space
+    text = re.sub(
+        RE_MULTIPLE_SPACES, r"\n\n", text
+    )  # Make multispaces into single space
     text = re.split(RE_SPLIT_SUMMARY, text)  # Split text
 
     text = [section for section in text]
@@ -400,7 +400,7 @@ class MyWikiCorpus:
         count_articles = 0
         with tqdm(total=21e6) as pbar:
             for args in grouper(texts_generator, batch_size=BATCH_SIZE):
-                # break
+
                 self.queue_read.put(args)
                 count_articles += BATCH_SIZE
                 pbar.update(BATCH_SIZE)

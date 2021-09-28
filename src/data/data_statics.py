@@ -28,7 +28,7 @@ SQL_WIKI_DUMP = INTERIM_DATA_PATH / "wiki_db_dumps.db"
 READ_QUE_SIZE = 1
 SQL_QUE_SIZE = 1
 N_PROCESSES = os.cpu_count()
-BATCH_SIZE = 10000
+BATCH_SIZE = 100  # 00
 
 # =============================================================================
 # Summary suitability constants
