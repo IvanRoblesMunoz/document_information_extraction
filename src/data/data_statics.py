@@ -28,7 +28,7 @@ SQL_WIKI_DUMP = INTERIM_DATA_PATH / "wiki_db_dumps.db"
 READ_QUE_SIZE = 1
 SQL_QUE_SIZE = 1
 N_PROCESSES = os.cpu_count()
-BATCH_SIZE = 100  # 00
+BATCH_SIZE = 10000
 
 # =============================================================================
 # Summary suitability constants
@@ -70,3 +70,13 @@ BERTSCORE_MODEL = "allenai/led-base-16384"
 BERTSCORE_MODEL_LAYER = 6
 BERTSCORE_LANGUAGE = "en"
 BERTSCORE_ALL_LAYERS = False
+
+# =============================================================================
+# Model fitting
+# =============================================================================
+
+MIN_SEMANTIC_SIMILARITY = 0.4
+MAX_SEMANTIC_SIMILARITY = 1
+MIN_NOVELTY = 0.15
+MAX_NOVELTY = 0.5
+MAX_TOKENS_BODY = 1024

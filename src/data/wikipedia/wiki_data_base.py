@@ -11,6 +11,7 @@ Created on Fri May 21 01:26:02 2021
 # =============================================================================
 import os
 import sqlite3
+import itertools
 
 from sqlalchemy import (
     create_engine,
@@ -175,7 +176,7 @@ def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
 
 
 def retrieve_query_in_batches(
-    query: tuple, out_f: str = SQL_WIKI_DUMP, batchsize: int = 1
+    query: tuple, out_f: str = SQL_WIKI_DUMP, batchsize: int = 1000
 ):
     """Retrieve query from database in batches."""
     conn = sqlite3.connect(out_f)
@@ -192,12 +193,12 @@ def retrieve_query_in_batches(
         yield batch
 
 
-# TODO: remove filter for already processed rows
 def retrive_suitable_strings(
     out_f: str = SQL_WIKI_DUMP,
     limit: int = None,
     min_tokens_summary: int = MIN_TOKENS_SUMMARY,
     max_tokens_summary: int = MAX_TOKENS_SUMMARY,
+    max_tokens_body: int = int(MAX_TOKENS_SUMMARY / MIN_COMPRESION_RATIO),
     min_tokens_body: int = MIN_TOKENS_BODY,
     min_ratio: float = MIN_COMPRESION_RATIO,
     max_ratio: float = MAX_COMPRESION_RATIO,
@@ -210,6 +211,7 @@ def retrive_suitable_strings(
             INNER JOIN wiki_articles wk 
                 ON ar.pageid = wk.pageid
             WHERE body_word_count>={min_tokens_body} 
+                AND body_word_count<={max_tokens_body}
                 AND summary_word_count>={min_tokens_summary}
                 AND summary_word_count<={max_tokens_summary}
                 AND CAST( summary_word_count AS FLOAT)/ CAST( body_word_count AS FLOAT) >= {min_ratio}
@@ -222,6 +224,38 @@ def retrive_suitable_strings(
     for rows in retrieve_query_in_batches(query, out_f, batchsize=batchsize):
 
         yield rows
+
+
+def retrive_observations_from_ids(
+    ids,
+    out_f=SQL_WIKI_DUMP,
+    table="wiki_articles",
+    id_column="pageid",
+    chunksize=10000,
+):
+    """Retrieve pageid, body and summary based on list of ids."""
+
+    def _retrive_single_query(batch_ids, out_f):
+        """Retrieve single query batch."""
+
+        query = (
+            f"""
+            SELECT *
+            FROM {table}
+            WHERE {id_column} in ({','.join(['?']*len(batch_ids))})
+            """,
+            batch_ids,
+        )
+        return retrieve_query(query, out_f)
+
+    iterations = len(ids) // chunksize + 1
+    relevant_obs = []
+    for i in range(iterations):
+        obs = _retrive_single_query(ids[chunksize * i : chunksize * (i + 1)], out_f)
+        relevant_obs.append(obs)
+
+    relevant_obs = list(itertools.chain(*relevant_obs))
+    return relevant_obs
 
 
 # =============================================================================
@@ -284,40 +318,3 @@ def transfer_to_new_db(
         dest_db,
         batch_formater=batch_formater,
     )
-
-
-# =============================================================================
-# Old
-# =============================================================================
-
-
-# def retrive_observations_from_ids(
-#     ids,
-#     out_f=SQL_WIKI_DUMP,
-#     # table="wiki_articles",
-#     id_column="page_id",
-#     chunksize=10000,
-# ):
-#     """Retrieve pageid, body and summary based on list of ids."""
-
-#     def _retrive_single_query(batch_ids, out_f):
-#         """Retrieve single query batch."""
-
-#         query = (
-#             f"""
-#             SELECT pageid,summary,body
-#             FROM wiki_articles
-#             WHERE {id_column} in ({','.join(['?']*len(batch_ids))})
-#             """,
-#             batch_ids,
-#         )
-#         return retrieve_query(query, out_f)
-
-#     iterations = len(ids) // chunksize + 1
-#     relevant_obs = []
-#     for i in range(iterations):
-#         obs = _retrive_single_query(ids[chunksize * i : chunksize * (i + 1)], out_f)
-#         relevant_obs.append(obs)
-
-#     relevant_obs = list(itertools.chain(*relevant_obs))
-#     return relevant_obs
