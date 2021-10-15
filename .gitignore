@@ -2,6 +2,8 @@
 data/raw/*
 data/interim/*
 data/final/*
+checkpoints/*
+lightning_logs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

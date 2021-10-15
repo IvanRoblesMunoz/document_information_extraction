@@ -5,24 +5,32 @@ Created on Wed Oct 13 23:46:20 2021
 
 @author: ivanr
 """
+
 # =============================================================================
 # Imports
 # =============================================================================
 import pickle
 import pandas as pd
 
-from src.data.data_statics import (
-    MIN_SEMANTIC_SIMILARITY,
-    MIN_NOVELTY,
-    MAX_NOVELTY,
-    MAX_TOKENS_BODY,
-)
+
 from src.data.wikipedia.wiki_data_base import (
     retrieve_query,
     retrive_observations_from_ids,
 )
 
+# =============================================================================
+# Statics
+# =============================================================================
+from src.summarisation.summariser_statics import (
+    MIN_SEMANTIC_SIMILARITY,
+    MIN_NOVELTY,
+    MAX_NOVELTY,
+    MAX_TOKENS_BODY,
+)
 
+# =============================================================================
+# Functions
+# =============================================================================
 def get_article_ids(
     min_semantic_similarity=MIN_SEMANTIC_SIMILARITY,
     max_novelty=MAX_NOVELTY,
@@ -31,6 +39,7 @@ def get_article_ids(
     random_state=None,
     n_sample_texts=None,
 ):
+    """Retrive suitable article ids."""
     query_suitable_articles = f"""
     SELECT ar.*,
            nv.novelty_tokens,
