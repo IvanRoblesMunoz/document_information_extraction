@@ -20,7 +20,7 @@ from src.data.data_statics import (
 N_SAMPLE_TEXTS = 100
 
 # =============================================================================
-# Model statics
+# Summariser model statics
 # =============================================================================
 RANDOM_SEED = 0
 TRAIN_TEST_SPLIT = 0.8

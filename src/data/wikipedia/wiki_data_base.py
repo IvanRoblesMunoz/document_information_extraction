@@ -69,7 +69,7 @@ class ArticleLevelInfo(Base):
 
 
 class WikiArticleNovelty(Base):
-    """Article database."""
+    """Article novelty database."""
 
     __tablename__ = "wiki_article_novelty"
     __table_args__ = {"extend_existing": True}
