@@ -10,18 +10,62 @@ Created on Thu Oct 21 19:10:02 2021
 # =============================================================================
 import pickle
 import re
+import sqlite3
 
+from tqdm import tqdm
+
+from haystack import Document
 from haystack.preprocessor import PreProcessor
-from src.data.wikipedia.wiki_data_base import retrieve_query_in_batches
+from src.data.wikipedia.wiki_data_base import retrieve_query_in_batches, retrieve_query
 
 # =============================================================================
 # Statics
 # =============================================================================
 from src.data.data_statics import SQL_WIKI_DUMP
+from src.retriever.retriever_statics import FAIIS_DB_DATA_PATH
 
 # from src.retriever.retriever_statics import FAISS_MAX_PASSAGE_TOKEN_LEN
 
 REDIRECT_RE = re.compile("REDIRECT")
+# =============================================================================
+# Check data already in
+# =============================================================================
+def connect_to_faiss_db():
+    """Connects to faiss db."""
+    conn = sqlite3.connect(FAIIS_DB_DATA_PATH.replace("sqlite:///", ""))
+    return conn
+
+
+def retrieve_tables_in_database(conn):
+    """Retrieve table names."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = cursor.fetchall()
+    return tables
+
+
+def retrieve_article_page_ids_already_in_faiss(conn):
+    """Retrieve page ids that have already being inserted."""
+    cursor = conn.cursor()
+
+    query = """
+            WITH cte(c1, c2, c3, meta_data_label, meta_data_value, c6) AS (
+                SELECT * FROM meta_document
+            
+            )
+            SELECT DISTINCT meta_data_value
+            FROM cte
+            WHERE meta_data_label = "page_id";
+            """
+    cursor.execute(query)
+    existing_ids = cursor.fetchall()
+    return existing_ids
+
+
+def insert_existing_faiss_articles():
+    conn = connect_to_faiss_db()
+    existing_ids = retrieve_article_page_ids_already_in_faiss(conn)
+
 
 # =============================================================================
 # Utility functions
@@ -46,11 +90,26 @@ def is_redirect(summary, body_sections):
     return body_is_list & contains_redirect & small_summary
 
 
+def count_articles(query):
+    """Count the number of articles in a query."""
+
+    count_n_query = (
+        """
+        SELECT COUNT(*)
+        FROM
+        """
+        + " "
+        + query.split("FROM")[1]
+    )
+
+    return retrieve_query(count_n_query)[0][0]
+
+
 def sql_reader_passage_generator(
     storage_method: str,
     n_sample_articles: int = None,
     out_f: str = SQL_WIKI_DUMP,
-    batchsize: int = 100,
+    batchsize: int = 10,
     skip_redirects: bool = True,
 ) -> dict:
     """
@@ -104,10 +163,14 @@ def sql_reader_passage_generator(
 
     if n_sample_articles:
         query += f"LIMIT {n_sample_articles}"
+    else:
+        n_sample_articles = count_articles(query)
 
     # Iterate through query
-    for article_batch in retrieve_query_in_batches(
-        query, out_f=out_f, batchsize=batchsize
+    for article_batch in tqdm(
+        retrieve_query_in_batches(query, out_f=out_f, batchsize=batchsize),
+        desc=f"Wikipedia articles batches, batchsize={batchsize}",
+        total=n_sample_articles // batchsize,
     ):
         # Iterate through batch
         for article in article_batch:
@@ -154,13 +217,12 @@ def make_document_from_passage(passage: dict, storage_method: str) -> dict:
         "meta": {
             "page_id": passage["page_id"],
             "title": passage["title"],
-            "section_text": passage["section_text"],
         },
     }
 
     # If storage method is faiss add section title
     if storage_method == "faiss":
-        document["section_title"] = (passage["section_title"],)
+        document["meta"]["section_title"] = passage["section_title"]
 
     elif storage_method == "elasticsearch":
         pass
@@ -175,7 +237,7 @@ def make_document_from_passage(passage: dict, storage_method: str) -> dict:
 def processed_document_generator(
     storage_method: str,
     preprocessor: PreProcessor,
-    batch_size_doc_generator: int = 10000,
+    batch_size_doc_generator: int = 1000,
     **kwargs,
 ) -> list:
 
@@ -216,29 +278,22 @@ def processed_document_generator(
         if counter % batch_size_doc_generator == 0:
             split_docs = preprocessor.process(passage_batch)
             passage_batch = []
+
+            # Modify document type for faiss compatibility
+            if storage_method == "faiss":
+                split_docs = [Document(**i) for i in split_docs]
+
             yield split_docs
 
     # yield remaing passages asthe last batch
     if len(passage_batch) > 0:
-        split_docs = preprocessor.process(passage_batch)
+        split_docs = preprocessor.process(
+            passage_batch,
+        )
         passage_batch = []
 
+        # Modify document type for faiss compatibility
+        if storage_method == "faiss":
+            split_docs = split_docs = [Document(**i) for i in split_docs]
+
         yield split_docs
-
-
-# from haystack import Document
-# TODO: Maybe convert the output to Document type if necessary for FAISS storage
-# elasticsearch_pre_processor = PreProcessor(
-#     split_length=2500,
-# )
-# faiss_pre_processor = PreProcessor(
-#     split_length=100,
-# )
-
-# all_yielded = []
-# for i in processed_document_generator(
-#     storage_method="elasticsearch", preprocessor=elasticsearch_pre_processor, **{"n_sample_articles": 100}
-# ):
-#     all_yielded.append(i)
-
-# kwargs = {"n_sample_articles": 1000}

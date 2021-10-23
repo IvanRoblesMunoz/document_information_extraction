@@ -1,0 +1,15 @@
+artifact_uri: file:///home/roblesi/git/document_information_extraction/mlruns/0/fe911feed6e446019ac673547b53949c/artifacts
+end_time: 1635002016920
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+name: ''
+run_id: fe911feed6e446019ac673547b53949c
+run_uuid: fe911feed6e446019ac673547b53949c
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1635001528709
+status: 3
+tags: []
+user_id: roblesi

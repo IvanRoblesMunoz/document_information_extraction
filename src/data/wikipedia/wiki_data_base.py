@@ -90,6 +90,15 @@ class WikiCosineSimilarity(Base):
     semantic_similarity = Column("semantic_similarity", Float, unique=False)
 
 
+class ArticlesInFAISS(Base):
+    """Article cosine similarty."""
+
+    __tablename__ = "articles_inf_faiss"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+
+
 def get_connection(out_f=SQL_WIKI_DUMP):
     """Get connection to database."""
     engine = create_engine(f"sqlite:///{str(out_f)}", echo=True)
