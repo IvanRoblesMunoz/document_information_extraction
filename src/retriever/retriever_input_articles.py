@@ -8,63 +8,29 @@ Created on Thu Oct 21 19:10:02 2021
 # =============================================================================
 # Imports
 # =============================================================================
+import os
 import pickle
 import re
-import sqlite3
 
 from tqdm import tqdm
 
 from haystack import Document
 from haystack.preprocessor import PreProcessor
 from src.data.wikipedia.wiki_data_base import retrieve_query_in_batches, retrieve_query
+from src.retriever.database_temp_fais import insert_existing_faiss_articles
 
 # =============================================================================
 # Statics
 # =============================================================================
 from src.data.data_statics import SQL_WIKI_DUMP
-from src.retriever.retriever_statics import FAIIS_DB_DATA_PATH
+from src.retriever.retriever_statics import (
+    FAISS_TEMP_SQL_DB_PATH,
+    FAISS_BATCH_PASSAGE_SIZE,
+)
 
 # from src.retriever.retriever_statics import FAISS_MAX_PASSAGE_TOKEN_LEN
 
 REDIRECT_RE = re.compile("REDIRECT")
-# =============================================================================
-# Check data already in
-# =============================================================================
-def connect_to_faiss_db():
-    """Connects to faiss db."""
-    conn = sqlite3.connect(FAIIS_DB_DATA_PATH.replace("sqlite:///", ""))
-    return conn
-
-
-def retrieve_tables_in_database(conn):
-    """Retrieve table names."""
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = cursor.fetchall()
-    return tables
-
-
-def retrieve_article_page_ids_already_in_faiss(conn):
-    """Retrieve page ids that have already being inserted."""
-    cursor = conn.cursor()
-
-    query = """
-            WITH cte(c1, c2, c3, meta_data_label, meta_data_value, c6) AS (
-                SELECT * FROM meta_document
-            
-            )
-            SELECT DISTINCT meta_data_value
-            FROM cte
-            WHERE meta_data_label = "page_id";
-            """
-    cursor.execute(query)
-    existing_ids = cursor.fetchall()
-    return existing_ids
-
-
-def insert_existing_faiss_articles():
-    conn = connect_to_faiss_db()
-    existing_ids = retrieve_article_page_ids_already_in_faiss(conn)
 
 
 # =============================================================================
@@ -109,7 +75,7 @@ def sql_reader_passage_generator(
     storage_method: str,
     n_sample_articles: int = None,
     out_f: str = SQL_WIKI_DUMP,
-    batchsize: int = 10,
+    batchsize: int = 100,
     skip_redirects: bool = True,
 ) -> dict:
     """
@@ -148,6 +114,9 @@ def sql_reader_passage_generator(
             "section_text": article}
 
     """
+    # Update table to check if we have already inserted certain aricles
+    if os.path.isfile(FAISS_TEMP_SQL_DB_PATH):
+        insert_existing_faiss_articles()
 
     # Define query
     query = """
@@ -156,9 +125,13 @@ def sql_reader_passage_generator(
            ,wk.summary
            ,wk.body_sections
            ,ar.title
+           
     FROM wiki_articles wk
     INNER JOIN article_level_info ar
         ON ar.pageid = wk.pageid
+    LEFT JOIN articles_in_faiss fai
+        on wk.pageid = fai.pageid
+    WHERE fai.pageid IS NULL
     """
 
     if n_sample_articles:
@@ -172,6 +145,7 @@ def sql_reader_passage_generator(
         desc=f"Wikipedia articles batches, batchsize={batchsize}",
         total=n_sample_articles // batchsize,
     ):
+
         # Iterate through batch
         for article in article_batch:
             page_id, section_titles, summary, body_sections, title = row_to_article(
@@ -182,20 +156,33 @@ def sql_reader_passage_generator(
                 pass
             else:
                 # If Faiss, we will yield a passage for each section
+                # TODO: Change this to yield article. (check that it works)
                 if storage_method == "faiss":
-                    yield {
-                        "page_id": page_id,
-                        "title": title,
-                        "section_title": "summary",
-                        "section_text": summary,
-                    }
-                    for sect_title_, sect_body_ in zip(section_titles, body_sections):
-                        yield {
+                    # Define summary document
+                    summary = [
+                        {
+                            "page_id": page_id,
+                            "title": title,
+                            "section_title": "summary",
+                            "section_text": summary,
+                        }
+                    ]
+
+                    # Define body document
+                    body = [
+                        {
                             "page_id": page_id,
                             "title": title,
                             "section_title": sect_title_,
                             "section_text": sect_body_,
                         }
+                        for sect_title_, sect_body_ in zip(
+                            section_titles, body_sections
+                        )
+                    ]
+                    # Yield both together
+                    yield summary + body
+
                 # If elastic search, we will yield a single
                 elif storage_method == "elasticsearch":
                     yield {
@@ -234,10 +221,11 @@ def make_document_from_passage(passage: dict, storage_method: str) -> dict:
     return document
 
 
+# TODO: refractor this to be able to take in article and produce article
 def processed_document_generator(
     storage_method: str,
     preprocessor: PreProcessor,
-    batch_size_doc_generator: int = 1000,
+    batch_size_doc_generator: int = FAISS_BATCH_PASSAGE_SIZE,
     **kwargs,
 ) -> list:
 
@@ -296,4 +284,5 @@ def processed_document_generator(
         if storage_method == "faiss":
             split_docs = split_docs = [Document(**i) for i in split_docs]
 
+        yield split_docs
         yield split_docs

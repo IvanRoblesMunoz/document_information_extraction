@@ -18,11 +18,16 @@ INTERIM_DATA_PATH = DATA_PATH / "interim"
 # =============================================================================
 # Dense Passage Retriever statics
 # =============================================================================
-FAISS_MAX_PASSAGE_TOKEN_LEN = 200
-FAIIS_DB_DATA_PATH = "sqlite:///" + str(INTERIM_DATA_PATH / "faiis_sql_database.db")
-FAIIS_EMB_DATA_PATH = INTERIM_DATA_PATH / "faiis_sql_database.faiss"
-FAIIS_QUERY_EMBEDDING_MODEL = "facebook/dpr-question_encoder-single-nq-base"
-FAIIS_PASSAGE_EMBEDDING_MODEL = "facebook/dpr-ctx_encoder-single-nq-base"
+FAISS_MAX_PASSAGE_TOKEN_LEN = 250  # 200
+FAISS_BATCH_PASSAGE_SIZE = 1000
+
+FAISS_DB_DATA_PATH = "sqlite:///" + str(INTERIM_DATA_PATH / "faiss_sql_database.db")
+FAISS_TEMP_SQL_DB_PATH = INTERIM_DATA_PATH / "temp_faiss_document_store.db"
+FAISS_EMB_DATA_PATH = INTERIM_DATA_PATH / "faiss_sql_database.faiss"
+FAISS_CONFIG_DATA_PATH = INTERIM_DATA_PATH / "faiss_sql_database.json"
+
+FAISS_QUERY_EMBEDDING_MODEL = "facebook/dpr-question_encoder-single-nq-base"
+FAISS_PASSAGE_EMBEDDING_MODEL = "facebook/dpr-ctx_encoder-single-nq-base"
 
 # =============================================================================
 # Sparse retriever statics

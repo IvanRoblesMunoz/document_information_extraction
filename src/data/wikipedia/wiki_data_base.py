@@ -86,17 +86,30 @@ class WikiCosineSimilarity(Base):
     __tablename__ = "wiki_article_cosine_similarity"
     __table_args__ = {"extend_existing": True}
 
-    pageid = Column("pageid", Integer, primary_key=True)
+    pageid = Column("pageid", Text, primary_key=True)
     semantic_similarity = Column("semantic_similarity", Float, unique=False)
 
 
 class ArticlesInFAISS(Base):
-    """Article cosine similarty."""
+    """List of articles already in FAISS db during embedding process."""
 
-    __tablename__ = "articles_inf_faiss"
+    __tablename__ = "articles_in_faiss"
     __table_args__ = {"extend_existing": True}
 
     pageid = Column("pageid", Integer, primary_key=True)
+
+
+class FAISSEmbeddingStore(Base):
+    """FAISS embedding store"""
+
+    __tablename__ = "faiss_embedding_store"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    title = Column("title", Text, unique=False)
+    embeddings = Column("embeddings", LargeBinary)
+    body_sections = Column("body_sections", LargeBinary, unique=False)
+    section_titles = Column("section_titles", LargeBinary, unique=False)
 
 
 def get_connection(out_f=SQL_WIKI_DUMP):
