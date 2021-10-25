@@ -29,6 +29,12 @@ READ_QUE_SIZE = 1
 SQL_QUE_SIZE = 1
 N_PROCESSES = os.cpu_count()
 BATCH_SIZE = 10000
+TEMP_DB = INTERIM_DATA_PATH / "temp_database.db"
+
+# =============================================================================
+# Is redirect constants
+# =============================================================================
+REDIRECT_INSERT_BUFFER_SIZE = 10000
 
 # =============================================================================
 # Summary suitability constants
@@ -58,7 +64,6 @@ NOVELTY_READ_QUE_SIZE = 1
 NOVELTY_SQL_QUE_SIZE = 1
 NOVELTY_N_PROCESSES = os.cpu_count()
 
-TEMP_DB = INTERIM_DATA_PATH / "temp_database.db"
 
 # --- Bertscore statics ---
 # We will use the highest performing model that has an input length long enough

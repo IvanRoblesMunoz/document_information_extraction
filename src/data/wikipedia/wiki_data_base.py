@@ -15,6 +15,7 @@ import itertools
 
 from sqlalchemy import (
     create_engine,
+    Boolean,
     Column,
     Integer,
     Text,
@@ -68,6 +69,16 @@ class ArticleLevelInfo(Base):
     body_word_count = Column("body_word_count", Integer, unique=False)
 
 
+class ArticleRedirectFlag(Base):
+    """Article database."""
+
+    __tablename__ = "article_redirect_flag"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    redirect_flag = Column("redirect_flag", Boolean, unique=False)
+
+
 class WikiArticleNovelty(Base):
     """Article novelty database."""
 
@@ -109,7 +120,6 @@ class FAISSEmbeddingStore(Base):
     title = Column("title", Text, unique=False)
     embeddings = Column("embeddings", LargeBinary)
     body_sections = Column("body_sections", LargeBinary, unique=False)
-    section_titles = Column("section_titles", LargeBinary, unique=False)
 
 
 def get_connection(out_f=SQL_WIKI_DUMP):
@@ -283,6 +293,15 @@ def retrive_observations_from_ids(
 # =============================================================================
 # Transfer
 # =============================================================================
+def redirect_flag_data_input_formater(batch):
+    """Formats data produced by generator for redirect flag to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "redirect_flag": obs[1],
+        }
+        for obs in batch
+    ]
 
 
 def novelty_data_input_formater(batch):

@@ -25,10 +25,9 @@ from src.retriever.database_temp_fais import insert_existing_faiss_articles
 from src.data.data_statics import SQL_WIKI_DUMP
 from src.retriever.retriever_statics import (
     FAISS_TEMP_SQL_DB_PATH,
-    FAISS_BATCH_PASSAGE_SIZE,
+    FAISS_GEN_N_ARTICLES_BATCH,
 )
 
-# from src.retriever.retriever_statics import FAISS_MAX_PASSAGE_TOKEN_LEN
 
 REDIRECT_RE = re.compile("REDIRECT")
 
@@ -75,7 +74,7 @@ def sql_reader_passage_generator(
     storage_method: str,
     n_sample_articles: int = None,
     out_f: str = SQL_WIKI_DUMP,
-    batchsize: int = 100,
+    batchsize: int = 1,
     skip_redirects: bool = True,
 ) -> dict:
     """
@@ -156,7 +155,6 @@ def sql_reader_passage_generator(
                 pass
             else:
                 # If Faiss, we will yield a passage for each section
-                # TODO: Change this to yield article. (check that it works)
                 if storage_method == "faiss":
                     # Define summary document
                     summary = [
@@ -221,11 +219,10 @@ def make_document_from_passage(passage: dict, storage_method: str) -> dict:
     return document
 
 
-# TODO: refractor this to be able to take in article and produce article
 def processed_document_generator(
     storage_method: str,
     preprocessor: PreProcessor,
-    batch_size_doc_generator: int = FAISS_BATCH_PASSAGE_SIZE,
+    batch_size_doc_generator: int = FAISS_GEN_N_ARTICLES_BATCH,
     **kwargs,
 ) -> list:
 
@@ -256,33 +253,38 @@ def processed_document_generator(
     kwargs["storage_method"] = storage_method
 
     counter = 0
-    passage_batch = []
+    article_batch = []
 
-    for passage in sql_reader_passage_generator(**kwargs):
-        passage_batch.append(make_document_from_passage(passage, storage_method))
+    for article in sql_reader_passage_generator(**kwargs):
+
+        article_processed = [
+            make_document_from_passage(passage, storage_method) for passage in article
+        ]
+        article_batch.append(article_processed)
 
         counter += 1
         # If batch finished, yield batch
         if counter % batch_size_doc_generator == 0:
-            split_docs = preprocessor.process(passage_batch)
-            passage_batch = []
+            split_docs = [preprocessor.process(article) for article in article_batch]
+            article_batch = []
 
             # Modify document type for faiss compatibility
             if storage_method == "faiss":
-                split_docs = [Document(**i) for i in split_docs]
+                split_docs = [
+                    [Document(**i) for i in split_articles]
+                    for split_articles in split_docs
+                ]
 
             yield split_docs
 
     # yield remaing passages asthe last batch
-    if len(passage_batch) > 0:
-        split_docs = preprocessor.process(
-            passage_batch,
-        )
-        passage_batch = []
+    if len(article_batch) > 0:
+        split_docs = [preprocessor.process(article) for article in article_batch]
 
         # Modify document type for faiss compatibility
         if storage_method == "faiss":
-            split_docs = split_docs = [Document(**i) for i in split_docs]
+            split_docs = [
+                [Document(**i) for i in split_articles] for split_articles in split_docs
+            ]
 
-        yield split_docs
         yield split_docs

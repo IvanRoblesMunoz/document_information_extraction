@@ -5,10 +5,17 @@ Created on Fri Oct 22 19:47:05 2021
 
 @author: roblesi
 """
+
+import os
+
+os.chdir("/home/roblesi/git/document_information_extraction")
+os.getcwd()
 # =============================================================================
 # Imports
 # =============================================================================
 import os
+import itertools
+import pickle
 
 from haystack.document_store.faiss import FAISSDocumentStore
 from haystack.retriever.dense import DensePassageRetriever
@@ -94,30 +101,71 @@ def populate_faiss_document_store(document_store, retriever):
     faiss_generator = processed_document_generator(
         storage_method="faiss",
         preprocessor=faiss_pre_processor,
-        **{"n_sample_articles": 20}
+        **{"n_sample_articles": 1000}
     )
 
-    for doc_batch in faiss_generator:
+    for article_batch in faiss_generator:
+        flattend_article_batch = list(itertools.chain(*article_batch))
+        flattended_emb_batch = retriever.embed_passages(flattend_article_batch)
 
-        batch_emb = retriever.embed_passages(doc_batch)
+        prev_page_id = None
+        entry_docs = []
+        entry_embs = []
+        batch_entry = []
+        for passage, emb in zip(flattend_article_batch, flattended_emb_batch):
 
-        for emb, doc in zip(batch_emb, doc_batch):
-            doc.embedding = emb
+            curr_page_id = passage.meta["page_id"]
 
-        try:
-            print("saving...")
-            document_store.write_documents(doc_batch)
-            document_store.save(FAISS_EMB_DATA_PATH)
-        except:
-            raise (Exception("Error"))
-        finally:
+            if (curr_page_id == prev_page_id) | (prev_page_id is None):
+                entry_docs.append(passage)
+                entry_embs.append(emb)
+                prev_page_id = curr_page_id
+            else:
 
-            print("saving forcibly...")
-            document_store.write_documents(doc_batch)
-            document_store.save(FAISS_EMB_DATA_PATH)
+                encoded_docs = (
+                    entry_docs  # pickle.dumps(entry_docs) # TODO: readd pickling
+                )
+                encoded_embs = entry_embs  # pickle.dumps(entry_embs)
+                title = entry_docs[0].meta["title"]
+                batch_entry.append(
+                    {
+                        "page_id": prev_page_id,
+                        "title": title,
+                        "embeddings": encoded_embs,
+                        "body_sections": encoded_docs,
+                    }
+                )
+                entry_docs = []
+                entry_embs = []
+                prev_page_id = curr_page_id
+
+                entry_docs.append(passage)
+                entry_embs.append(emb)
+
+        # try:
+        #     print("saving...")
+        #     document_store.write_documents(doc_batch)
+        #     document_store.save(FAISS_EMB_DATA_PATH)
+        # except:
+        #     raise (Exception("Error"))
+        # finally:
+
+        #     print("saving forcibly...")
+        #     document_store.write_documents(doc_batch)
+        #     document_store.save(FAISS_EMB_DATA_PATH)
 
     # document_store.update_embeddings(retriever=retriever)
 
+
+# for entry in batch_entry:
+#     entry.keys()
+#     for doc, emb in zip(entry["body_sections"], entry["embeddings"]):
+#         assert doc.meta["page_id"] == entry["page_id"]
+
+#         assert abs(retriever.embed_passages([doc])-emb).sum()/abs(emb).mean()<1e-10
+
+
+# populate_faiss_document_store(document_store, retriever)
 
 # populate_faiss_document_store(document_store, retriever)
 
@@ -135,29 +183,29 @@ def populate_faiss_document_store(document_store, retriever):
 # =============================================================================
 # Faiss
 # =============================================================================
-import faiss
-import numpy as np
+# import faiss
+# import numpy as np
 
-embeddings = []
-contents = []
-for doc in doc_batch:
-    embeddings.append(doc.embedding)
+# embeddings = []
+# contents = []
+# for doc in doc_batch:
+#     embeddings.append(doc.embedding)
 
-    content = doc.content
-    meta = doc.meta
-    meta["content"] = content
-    contents.append(meta)
+#     content = doc.content
+#     meta = doc.meta
+#     meta["content"] = content
+#     contents.append(meta)
 
 
-len(embeddings)
-embeddings = np.stack(embeddings)
+# len(embeddings)
+# embeddings = np.stack(embeddings)
 
-index = faiss.IndexFlatL2(768)
-index.add(embeddings)
+# index = faiss.IndexFlatL2(768)
+# index.add(embeddings)
 
-query = ["What is autism?"]
-query_vectors = retriever.embed_queries(query)
+# query = ["What is autism?"]
+# query_vectors = retriever.embed_queries(query)
 
-response = index.search(query_vectors, 5)
+# response = index.search(query_vectors, 5)
 
-response_content = [contents[i] for i in response[1][0]]
+# response_content = [contents[i] for i in response[1][0]]

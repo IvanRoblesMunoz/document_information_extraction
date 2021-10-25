@@ -19,8 +19,10 @@ sudo apt install elasticsearch
 
 
 # 6. Commands 
-# 6.1 enable
+# 6.1.1 enable
 sudo systemctl enable elasticsearch
+# 6.1.2 disable
+sudo systemctl disable elasticsearch
 
 # 6.2 Start
 # sudo systemctl start elasticsearch
