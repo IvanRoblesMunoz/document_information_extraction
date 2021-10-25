@@ -34,7 +34,7 @@ TEMP_DB = INTERIM_DATA_PATH / "temp_database.db"
 # =============================================================================
 # Is redirect constants
 # =============================================================================
-REDIRECT_INSERT_BUFFER_SIZE = 10000
+REDIRECT_INSERT_BUFFER_SIZE = 100000
 
 # =============================================================================
 # Summary suitability constants

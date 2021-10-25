@@ -6,6 +6,77 @@ Created on Mon Oct 25 19:29:13 2021
 @author: roblesi
 """
 
+
+# =============================================================================
+# Imports
+# =============================================================================
+import time
+from mwviews.api import PageviewsClient
+
+from src.data.wikipedia.wiki_data_base import retrieve_query
+
+# =============================================================================
+# Statics
+# =============================================================================
+
+PAGE_VIEWS_START_DATE = "20201001"
+PAGE_VIEWS_END_DATE = "20201001"
+
+
+# =============================================================================
+# Functions
+# =============================================================================
+
+
+def get_page_vies_for_articles():
+    p = PageviewsClient(user_agent="")
+
+
+# 12_701_534 articles ~5.14 days
+
+
+query = """
+SELECT ar.pageid,
+        ar.title
+FROM article_level_info  ar
+INNER JOIN article_redirect_flag rd
+    ON ar.pageid=rd.pageid
+WHERE rd.redirect_flag = FALSE
+
+LIMIT 100
+"""
+
+articles = retrieve_query(query)
+
+flat_page_ids = [item for sublist in articles for item in sublist]
+page_ids_flat, titles_flat = zip(*articles)
+
+articles_200 = p.article_views(
+    "en.wikipedia",
+    flat_list,
+    start="20201001",
+    end="20211001",
+    granularity="monthly",
+)
+help(p)
+
+
+end200 = time.time()
+taken200 = end200 - start200
+print(f"time taken 200 {taken200}")
+
+
+query = """
+SELECT title from article_level_info LIMIT 10000
+"""
+articles = retrieve_query(query)
+flat_list = [item for sublist in articles for item in sublist]
+
+
+# time taken 200 7.269313812255859
+# time taken 10000 455.92031836509705
+
+
 # # =============================================================================
 # # Imports
 # # =============================================================================
@@ -48,93 +119,3 @@ Created on Mon Oct 25 19:29:13 2021
 #     "POST",
 #     url="https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/all-agents/Albert_Einstein/daily/2015100100/2015103100",
 # )
-
-
-# =============================================================================
-# Use this
-# =============================================================================
-from src.data.wikipedia.wiki_data_base import retrieve_query
-import time
-from mwviews.api import PageviewsClient
-
-p = PageviewsClient(user_agent="<ivan.robles.munoz@hotmail.com>")
-
-# # Fideuà vs. Paella on Spanish Wikipedia
-# p.article_views(
-#     "en.wikipedia",
-#     ["Barack Obama", "Anarchism"],
-#     start="20201001",
-#     end="20211001",
-#     granularity="monthly",
-# )
-
-
-# # Top articles on German Wikivoyage
-# p.top_articles("en.wikipedia", limit=100, year=2020)
-
-query = """
-SELECT title from article_level_info LIMIT 200
-"""
-articles = retrieve_query(query)
-flat_list = [item for sublist in articles for item in sublist]
-
-start200 = time.time()
-articles_200 = p.article_views(
-    "en.wikipedia",
-    flat_list,
-    start="20201001",
-    end="20211001",
-    granularity="monthly",
-)
-end200 = time.time()
-taken200 = end200 - start200
-print(f"time taken 200 {taken200}")
-
-
-query = """
-SELECT title from article_level_info LIMIT 10000
-"""
-articles = retrieve_query(query)
-flat_list = [item for sublist in articles for item in sublist]
-
-start10000 = time.time()
-articles_10000 = p.article_views(
-    "en.wikipedia",
-    flat_list,
-    start="20201001",
-    end="20211001",
-    granularity="monthly",
-)
-end10000 = time.time()
-taken10000 = end10000 - start10000
-print(f"time taken 10000 {taken10000}")
-
-
-query = """
-SELECT title from article_level_info LIMIT 100000
-"""
-articles = retrieve_query(query)
-flat_list = [item for sublist in articles for item in sublist]
-
-start100000 = time.time()
-articles_100000 = p.article_views(
-    "en.wikipedia",
-    flat_list,
-    start="20201001",
-    end="20211001",
-    granularity="monthly",
-)
-end100000 = time.time()
-taken100000 = end100000 - start100000
-print(f"time taken 100000 {taken100000}")
-
-
-10000 / 200 * 7 / 60
-
-6e6 / 200 * 7 / 60 / 60 / 24
-6e6 / 10000 * 455 / 60 / 60 / 24
-
-(456 / 10000) / (7.26 / 200)
-
-# time taken 200 7.269313812255859
-# time taken 10000 455.92031836509705

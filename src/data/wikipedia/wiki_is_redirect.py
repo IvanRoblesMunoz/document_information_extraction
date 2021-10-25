@@ -55,8 +55,7 @@ def check_is_redirect(summary, body_sections):
     """Check if article is a redirect."""
     body_is_list = body_sections == []
     contains_redirect = bool(re.search(REDIRECT_RE, summary))
-    small_summary = len(summary.split()) <= 20
-    return body_is_list & contains_redirect & small_summary
+    return body_is_list & contains_redirect
 
 
 def count_articles(query):
