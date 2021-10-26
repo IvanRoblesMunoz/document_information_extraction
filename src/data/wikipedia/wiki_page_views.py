@@ -10,17 +10,36 @@ Created on Mon Oct 25 19:29:13 2021
 # =============================================================================
 # Imports
 # =============================================================================
-import time
+import os
+import sys
+from pathlib import Path
+import datetime
+from requests import ConnectionError
+
+from tqdm import tqdm
+
+import numpy as np
 from mwviews.api import PageviewsClient
 
-from src.data.wikipedia.wiki_data_base import retrieve_query
+WORKING_DIRECTORY = Path(os.getcwd())
+sys.path.append(str(WORKING_DIRECTORY))
+
+from src.data.wikipedia.wiki_data_base import (
+    retrieve_query_in_batches,
+    count_articles,
+    WikiPageView,
+    get_connection,
+    transfer_to_new_db,
+    wiki_page_views_data_input_formater,
+)
 
 # =============================================================================
 # Statics
 # =============================================================================
+from src.data.data_statics import TEMP_DB, SQL_WIKI_DUMP
 
 PAGE_VIEWS_START_DATE = "20201001"
-PAGE_VIEWS_END_DATE = "20201001"
+PAGE_VIEWS_END_DATE = "20211001"
 
 
 # =============================================================================
@@ -28,54 +47,171 @@ PAGE_VIEWS_END_DATE = "20201001"
 # =============================================================================
 
 
-def get_page_vies_for_articles():
-    p = PageviewsClient(user_agent="")
+def insert_articles_to_db(observations_to_insert, engine, session):
+    """Insert article redirect flag into database."""
+    engine.execute(WikiPageView.__table__.insert(), observations_to_insert)
+    session.commit()
+    session.close()
 
 
-# 12_701_534 articles ~5.14 days
+def make_pageview_request(
+    client_user: PageviewsClient,
+    titles_flat: list,
+) -> list:
+    """Make request to download pageviews."""
+    return client_user.article_views(
+        "en.wikipedia",
+        titles_flat,
+        start=PAGE_VIEWS_START_DATE,
+        end=PAGE_VIEWS_END_DATE,
+        granularity="monthly",
+    )
 
 
-query = """
-SELECT ar.pageid,
-        ar.title
-FROM article_level_info  ar
-INNER JOIN article_redirect_flag rd
-    ON ar.pageid=rd.pageid
-WHERE rd.redirect_flag = FALSE
+def format_response_into_entry(page_view_response_batch, page_id, title):
+    """Format response to match correct entry for database."""
+    try:
+        row = {
+            "pageid": page_id,
+            "title": title,
+            "pageviews_2020_10_01": page_view_response_batch[
+                datetime.datetime(2020, 10, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2020_11_01": page_view_response_batch[
+                datetime.datetime(2020, 11, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2020_12_01": page_view_response_batch[
+                datetime.datetime(2020, 12, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_01_01": page_view_response_batch[
+                datetime.datetime(2021, 1, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_02_01": page_view_response_batch[
+                datetime.datetime(2021, 2, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_03_01": page_view_response_batch[
+                datetime.datetime(2021, 3, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_04_01": page_view_response_batch[
+                datetime.datetime(2021, 4, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_05_01": page_view_response_batch[
+                datetime.datetime(2021, 5, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_06_01": page_view_response_batch[
+                datetime.datetime(2021, 6, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_07_01": page_view_response_batch[
+                datetime.datetime(2021, 7, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_08_01": page_view_response_batch[
+                datetime.datetime(2021, 8, 1, 0, 0)
+            ][title.replace(" ", "_")],
+            "pageviews_2021_09_01": page_view_response_batch[
+                datetime.datetime(2021, 9, 1, 0, 0)
+            ][title.replace(" ", "_")],
+        }
+        relevant_vals = list(row.values())[2:]
+        relevant_vals = [i if i else 0 for i in relevant_vals]
 
-LIMIT 100
-"""
+        row["mean_views"] = np.mean(relevant_vals)
+    except KeyError:
+        print(f"Key error {title}")
 
-articles = retrieve_query(query)
-
-flat_page_ids = [item for sublist in articles for item in sublist]
-page_ids_flat, titles_flat = zip(*articles)
-
-articles_200 = p.article_views(
-    "en.wikipedia",
-    flat_list,
-    start="20201001",
-    end="20211001",
-    granularity="monthly",
-)
-help(p)
+    return row
 
 
-end200 = time.time()
-taken200 = end200 - start200
-print(f"time taken 200 {taken200}")
+def recursive_call_request(client_user, titles_flat):
+    try:
+        page_view_response_batch = make_pageview_request(
+            client_user,
+            titles_flat,
+        )
+        return page_view_response_batch
+
+    except ConnectionError:
+        print("Retrying call again")
+        client_user = PageviewsClient(user_agent="")
+        return recursive_call_request(
+            client_user,
+            titles_flat,
+        )
 
 
-query = """
-SELECT title from article_level_info LIMIT 10000
-"""
-articles = retrieve_query(query)
-flat_list = [item for sublist in articles for item in sublist]
+def update_pageviews_already_downloaded():
+    src_query = """
+        SELECT *
+        FROM wiki_page_view
+    """
+    transfer_to_new_db(
+        src_query,
+        src_db=TEMP_DB,
+        dest_db=SQL_WIKI_DUMP,
+        dest_table=WikiPageView,
+        batch_formater=wiki_page_views_data_input_formater,
+    )
 
 
-# time taken 200 7.269313812255859
-# time taken 10000 455.92031836509705
+def get_page_views_for_articles(batchsize=20):
 
+    print("Transferring pageviews already downloaded...")
+    update_pageviews_already_downloaded()
+
+    # Connect to temp db
+    engine_temp_db, session_temp_db = get_connection(TEMP_DB)
+    conn_temp_db = engine_temp_db.connect()
+    conn_temp_db.execute("DELETE FROM wiki_page_view;")
+
+    # TODO: check if some of these arent redirects, by removing the length check
+    # 12_699_812 articles ~5.14 days
+    client_user = PageviewsClient(user_agent="")
+
+    # TODO: Check articles already added
+    query = """
+    SELECT ar.pageid,
+            ar.title
+            
+    FROM article_level_info  ar
+    INNER JOIN article_redirect_flag rd
+        ON ar.pageid=rd.pageid
+    LEFT JOIN wiki_page_view pvw
+        on ar.pageid = pvw.pageid
+    WHERE rd.redirect_flag = FALSE
+        AND pvw.pageid is NULL
+
+
+    """
+
+    n_articles_to_download = count_articles(query)
+    for batch_articles in tqdm(
+        retrieve_query_in_batches(query, batchsize=batchsize),
+        desc=f"Wikipedia articles batches, batchsize={batchsize}",
+        total=n_articles_to_download // batchsize,
+    ):
+
+        page_ids_flat, titles_flat = zip(*batch_articles)
+
+        # page_view_response_batch = make_pageview_request(
+        #     client_user,
+        #     titles_flat,
+        # )
+        # Make this recursively, so in case it breaks, it restarts on its own
+        page_view_response_batch = recursive_call_request(client_user, titles_flat)
+
+        formated_page_view_response_batch = [
+            format_response_into_entry(page_view_response_batch, page_id, title)
+            for page_id, title in batch_articles
+        ]
+        # for page_id, title in batch_articles:
+        #     pass
+
+        insert_articles_to_db(
+            formated_page_view_response_batch, engine_temp_db, session_temp_db
+        )
+
+
+if __name__ == "__main__":
+    get_page_views_for_articles()
 
 # # =============================================================================
 # # Imports

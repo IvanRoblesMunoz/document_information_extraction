@@ -28,6 +28,7 @@ from src.data.wikipedia.wiki_data_base import (
     ArticleRedirectFlag,
     transfer_to_new_db,
     redirect_flag_data_input_formater,
+    count_articles,
 )
 
 # =============================================================================
@@ -58,21 +59,6 @@ def check_is_redirect(summary, body_sections):
     return body_is_list & contains_redirect
 
 
-def count_articles(query):
-    """Count the number of articles in a query."""
-
-    count_n_query = (
-        """
-        SELECT COUNT(*)
-        FROM
-        """
-        + " "
-        + query.split("FROM")[1]
-    )
-
-    return retrieve_query(count_n_query)[0][0]
-
-
 def insert_articles_to_db(observations_to_insert, engine, session):
     """Insert article redirect flag into database."""
     engine.execute(ArticleRedirectFlag.__table__.insert(), observations_to_insert)
@@ -90,7 +76,7 @@ def make_query_generator(buffer_size=REDIRECT_INSERT_BUFFER_SIZE):
 
     # Connect to temporary database
     engine_temp_db, session_temp_db = get_connection(TEMP_DB)
-    conn_temp_db = engine.connect()
+    conn_temp_db = engine_temp_db.connect()
     conn_temp_db.execute("DELETE FROM article_redirect_flag;")
     session_temp_db.commit()
     session_temp_db.close()

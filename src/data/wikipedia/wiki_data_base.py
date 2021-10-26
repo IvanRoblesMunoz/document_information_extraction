@@ -70,13 +70,36 @@ class ArticleLevelInfo(Base):
 
 
 class ArticleRedirectFlag(Base):
-    """Article database."""
+    """Database indicating which articles are redirects."""
 
     __tablename__ = "article_redirect_flag"
     __table_args__ = {"extend_existing": True}
 
     pageid = Column("pageid", Integer, primary_key=True)
     redirect_flag = Column("redirect_flag", Boolean, unique=False)
+
+
+class WikiPageView(Base):
+    """Article database."""
+
+    __tablename__ = "wiki_page_view"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    title = Column("title", Text, unique=False)
+    pageviews_2020_10_01 = Column("pageviews_2020_10_01", Integer, unique=False)
+    pageviews_2020_11_01 = Column("pageviews_2020_11_01", Integer, unique=False)
+    pageviews_2020_12_01 = Column("pageviews_2020_12_01", Integer, unique=False)
+    pageviews_2021_01_01 = Column("pageviews_2021_01_01", Integer, unique=False)
+    pageviews_2021_02_01 = Column("pageviews_2021_02_01", Integer, unique=False)
+    pageviews_2021_03_01 = Column("pageviews_2021_03_01", Integer, unique=False)
+    pageviews_2021_04_01 = Column("pageviews_2021_04_01", Integer, unique=False)
+    pageviews_2021_05_01 = Column("pageviews_2021_05_01", Integer, unique=False)
+    pageviews_2021_06_01 = Column("pageviews_2021_06_01", Integer, unique=False)
+    pageviews_2021_07_01 = Column("pageviews_2021_07_01", Integer, unique=False)
+    pageviews_2021_08_01 = Column("pageviews_2021_08_01", Integer, unique=False)
+    pageviews_2021_09_01 = Column("pageviews_2021_09_01", Integer, unique=False)
+    mean_views = Column("mean_views", Float, unique=False)
 
 
 class WikiArticleNovelty(Base):
@@ -304,6 +327,30 @@ def redirect_flag_data_input_formater(batch):
     ]
 
 
+def wiki_page_views_data_input_formater(batch):
+    """Formats data produced by generator for wiki page_views to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "title": obs[1],
+            "pageviews_2020_10_01": obs[2],
+            "pageviews_2020_11_01": obs[3],
+            "pageviews_2020_12_01": obs[4],
+            "pageviews_2021_01_01": obs[5],
+            "pageviews_2021_02_01": obs[6],
+            "pageviews_2021_03_01": obs[7],
+            "pageviews_2021_04_01": obs[8],
+            "pageviews_2021_05_01": obs[9],
+            "pageviews_2021_06_01": obs[10],
+            "pageviews_2021_07_01": obs[11],
+            "pageviews_2021_08_01": obs[12],
+            "pageviews_2021_09_01": obs[13],
+            "mean_views": obs[14],
+        }
+        for obs in batch
+    ]
+
+
 def novelty_data_input_formater(batch):
     """Formats data produced by generator for novelty data to insert in db."""
     return [
@@ -359,3 +406,21 @@ def transfer_to_new_db(
         dest_db,
         batch_formater=batch_formater,
     )
+
+
+# =============================================================================
+# Other
+# =============================================================================
+def count_articles(query):
+    """Count the number of articles in a query."""
+
+    count_n_query = (
+        """
+        SELECT COUNT(*)
+        FROM
+        """
+        + " "
+        + query.split("FROM")[1]
+    )
+
+    return retrieve_query(count_n_query)[0][0]
