@@ -13,9 +13,12 @@ Created on Mon Oct 25 19:29:13 2021
 import os
 import sys
 import threading
+import multiprocessing
+import itertools
 from pathlib import Path
 import datetime
 import _thread as thread
+from json import JSONDecodeError
 
 from tqdm import tqdm
 
@@ -42,7 +45,7 @@ from src.data.data_statics import TEMP_DB, SQL_WIKI_DUMP
 PAGE_VIEWS_START_DATE = "20201001"
 PAGE_VIEWS_END_DATE = "20211001"
 PAGE_VIEWS_API_TIMEOUT = 10
-PAGE_VIEWS_REQUEST_BATCH = 10
+PAGE_VIEWS_REQUEST_BATCH = 5
 
 
 # =============================================================================
@@ -75,13 +78,14 @@ def exit_after(seconds):
     return outer
 
 
-@exit_after(PAGE_VIEWS_API_TIMEOUT)
-def make_pageview_request(
-    client_user: PageviewsClient,
-    titles_flat: list,
-) -> list:
+# @exit_after(PAGE_VIEWS_API_TIMEOUT)
+def make_pageview_request(batch_articles):
     """Make request to download pageviews."""
-    return client_user.article_views(
+
+    client_user = PageviewsClient(user_agent="")
+    _, titles_flat = zip(*batch_articles)
+
+    return batch_articles, client_user.article_views(
         "en.wikipedia",
         titles_flat,
         start=PAGE_VIEWS_START_DATE,
@@ -183,6 +187,25 @@ def count_articles():
     return retrieve_query(count_n_query)[0]
 
 
+@exit_after(PAGE_VIEWS_API_TIMEOUT)
+def run_requests_concurrently(args_list):
+    # try:
+    if __name__ == "__main__":
+        pool = multiprocessing.Pool(os.cpu_count())
+        response_list = pool.map(make_pageview_request, tuple(args_list))
+        pool.close()
+        pool.terminate()
+        pool.join()
+
+    # except:  # JSONDecodeError:
+    #     print("arglist causing error", arglist)
+    #     pool.close()
+    #     pool.terminate()
+    #     pool.join()
+    #     response_list = []
+    return response_list
+
+
 def get_page_views_for_articles(batchsize=PAGE_VIEWS_REQUEST_BATCH):
     """Create page views for wiki database."""
 
@@ -190,12 +213,16 @@ def get_page_views_for_articles(batchsize=PAGE_VIEWS_REQUEST_BATCH):
     engine_temp_db, session_temp_db = get_connection(TEMP_DB)
     conn_temp_db = engine_temp_db.connect()
 
-    print("Transferring pageviews already downloaded...")
-    update_pageviews_already_downloaded()
+    try:
+        print("Transferring pageviews already downloaded...")
+        update_pageviews_already_downloaded()
+        print("pageviews transfered...")
+    except:
+        conn_temp_db.execute("DELETE FROM wiki_page_view;")
 
     conn_temp_db.execute("DELETE FROM wiki_page_view;")
 
-    client_user = PageviewsClient(user_agent="")
+    # client_user = PageviewsClient(user_agent="")
 
     query = """
     SELECT ar.pageid,
@@ -208,45 +235,49 @@ def get_page_views_for_articles(batchsize=PAGE_VIEWS_REQUEST_BATCH):
         on ar.pageid = pvw.pageid
     WHERE rd.redirect_flag = FALSE
         AND pvw.pageid is NULL
-
-
+    
     """
     # Get count of articles aready download and those to download
     n_total_to_download, n_already_downloaded = count_articles()
 
-    first_time = True
-    with tqdm(
-        total=n_total_to_download,
-    ) as pbar:
+    buffer_count = 0
+    args_list = []
+    with tqdm(total=n_total_to_download) as pbar:
+        pbar.update(n_already_downloaded)
 
         for batch_articles in retrieve_query_in_batches(query, batchsize=batchsize):
-            # Update articles with pageviews
-            if first_time:
-                pbar.update(n_already_downloaded)
-                first_time = False
+            # Add counter and append batch
+            buffer_count += 1
+            args_list.append(batch_articles)
 
-            # Flatten query
-            _, titles_flat = zip(*batch_articles)
+            # try:
+            # Check for buffer
+            if buffer_count % os.cpu_count() == 0:
+                # Update progress bar
+                pbar.update(batchsize * os.cpu_count())
+                print(pbar)
 
-            # Get response with page views
-            page_view_response_batch = make_pageview_request(
-                client_user,
-                titles_flat,
-            )
+                # Process requests
+                response_list = run_requests_concurrently(args_list)
+                if not response_list == []:
+                    # Format response batches
+                    formated_page_view_response_batch = []
+                    for args, resp in response_list:
+                        formated_page_view_response_batch += [
+                            format_response_into_entry(resp, page_id, title)
+                            for page_id, title in args
+                        ]
+                    # Insert to db
+                    insert_articles_to_db(
+                        formated_page_view_response_batch,
+                        engine_temp_db,
+                        session_temp_db,
+                    )
+                    # restart list
+                    args_list = []
+            # except:  # JSONDecodeError:
 
-            # Formate the response and insert to db
-            formated_page_view_response_batch = [
-                format_response_into_entry(page_view_response_batch, page_id, title)
-                for page_id, title in batch_articles
-            ]
-
-            insert_articles_to_db(
-                formated_page_view_response_batch, engine_temp_db, session_temp_db
-            )
-
-            # Update progressbar
-            pbar.update(batchsize)
-            print(pbar)
+            #     args_list = []
 
 
 if __name__ == "__main__":

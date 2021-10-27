@@ -39,6 +39,10 @@ from src.data.data_statics import REDIRECT_INSERT_BUFFER_SIZE, TEMP_DB, SQL_WIKI
 
 REDIRECT_RE = re.compile("REDIRECT")
 
+REDIRECT_TITLES = re.compile(
+    "Category:|Wikipedia:|File:|Template:|Draft:|Portal:|Module:|Help:|MediaWiki:|Category :|Wikipedia :|File :|Template :|Draft :|Portal :|Module :|Help :|MediaWiki :"
+)
+
 # =============================================================================
 # Functions
 # =============================================================================
@@ -49,14 +53,15 @@ def decode_row(row: list) -> tuple:
     page_id = row[0]
     summary = row[1]
     body_sections = pickle.loads(row[2])
-    return page_id, summary, body_sections
+    title = row[3]
+    return page_id, summary, body_sections, title
 
 
-def check_is_redirect(summary, body_sections):
+def check_is_redirect(summary, title):
     """Check if article is a redirect."""
-    body_is_list = body_sections == []
     contains_redirect = bool(re.search(REDIRECT_RE, summary))
-    return body_is_list & contains_redirect
+    contains_redirect_title = bool(re.search(REDIRECT_TITLES, title))
+    return contains_redirect | contains_redirect_title
 
 
 def insert_articles_to_db(observations_to_insert, engine, session):
@@ -83,8 +88,13 @@ def make_query_generator(buffer_size=REDIRECT_INSERT_BUFFER_SIZE):
 
     # Make query to extract articles
     query = """
-    SELECT pageid, summary, body_sections
-    FROM wiki_articles
+    SELECT wk.pageid,
+           wk.summary, 
+           wk.body_sections, 
+           ar.title
+    FROM wiki_articles wk
+    LEFT JOIN article_level_info ar
+        ON ar.pageid = wk.pageid
 
     """
 
@@ -99,8 +109,8 @@ def make_query_generator(buffer_size=REDIRECT_INSERT_BUFFER_SIZE):
         retrieve_query_in_batches(query, batchsize=1), total=n_articles
     ):
         # Make flag to insert
-        page_id, summary, body_sections = decode_row(*article)
-        redirect_flag = check_is_redirect(summary, body_sections)
+        page_id, summary, body_sections, title = decode_row(*article)
+        redirect_flag = check_is_redirect(summary, title)
         obs = {"pageid": page_id, "redirect_flag": redirect_flag}
         observations_to_insert.append(obs)
 
