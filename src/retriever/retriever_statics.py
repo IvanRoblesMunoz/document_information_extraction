@@ -18,7 +18,7 @@ INTERIM_DATA_PATH = DATA_PATH / "interim"
 # =============================================================================
 # Dense Passage Retriever statics
 # =============================================================================
-FAISS_MAX_PASSAGE_TOKEN_LEN = 250  # 200
+FAISS_MAX_PASSAGE_TOKEN_LEN = 150  # 200
 FAISS_GEN_N_ARTICLES_BATCH = 1000
 
 FAISS_DB_DATA_PATH = "sqlite:///" + str(INTERIM_DATA_PATH / "faiss_sql_database.db")

@@ -44,9 +44,9 @@ from src.data.data_statics import TEMP_DB, SQL_WIKI_DUMP
 
 PAGE_VIEWS_START_DATE = "20201001"
 PAGE_VIEWS_END_DATE = "20211001"
-PAGE_VIEWS_API_TIMEOUT = 10
-PAGE_VIEWS_REQUEST_BATCH = 5
-
+PAGE_VIEWS_API_TIMEOUT = 300
+PAGE_VIEWS_REQUEST_BATCH = 10
+PROCESS_MULTIPLIER = 1
 
 # =============================================================================
 # Functions
@@ -187,15 +187,15 @@ def count_articles():
     return retrieve_query(count_n_query)[0]
 
 
-@exit_after(PAGE_VIEWS_API_TIMEOUT)
+# @exit_after(PAGE_VIEWS_API_TIMEOUT)
 def run_requests_concurrently(args_list):
     # try:
     if __name__ == "__main__":
-        pool = multiprocessing.Pool(os.cpu_count())
+        pool = multiprocessing.Pool(os.cpu_count() * PROCESS_MULTIPLIER)
         response_list = pool.map(make_pageview_request, tuple(args_list))
-        pool.close()
-        pool.terminate()
-        pool.join()
+        # pool.close()
+        # pool.terminate()
+        # pool.join()
 
     # except:  # JSONDecodeError:
     #     print("arglist causing error", arglist)
@@ -206,6 +206,7 @@ def run_requests_concurrently(args_list):
     return response_list
 
 
+# @exit_after(PAGE_VIEWS_API_TIMEOUT)
 def get_page_views_for_articles(batchsize=PAGE_VIEWS_REQUEST_BATCH):
     """Create page views for wiki database."""
 
@@ -252,9 +253,10 @@ def get_page_views_for_articles(batchsize=PAGE_VIEWS_REQUEST_BATCH):
 
             # try:
             # Check for buffer
-            if buffer_count % os.cpu_count() == 0:
+            if buffer_count % (os.cpu_count() * PROCESS_MULTIPLIER) == 0:
                 # Update progress bar
                 pbar.update(batchsize * os.cpu_count())
+
                 print(pbar)
 
                 # Process requests
@@ -282,3 +284,6 @@ def get_page_views_for_articles(batchsize=PAGE_VIEWS_REQUEST_BATCH):
 
 if __name__ == "__main__":
     get_page_views_for_articles(PAGE_VIEWS_REQUEST_BATCH)
+
+
+7308528 * 0.405

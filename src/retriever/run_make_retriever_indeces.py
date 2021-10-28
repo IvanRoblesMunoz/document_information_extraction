@@ -6,10 +6,6 @@ Created on Fri Oct 22 19:47:05 2021
 @author: roblesi
 """
 
-import os
-
-os.chdir("/home/roblesi/git/document_information_extraction")
-os.getcwd()
 # =============================================================================
 # Imports
 # =============================================================================

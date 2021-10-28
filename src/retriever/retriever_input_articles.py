@@ -5,12 +5,16 @@ Created on Thu Oct 21 19:10:02 2021
 
 @author: roblesi
 """
+
 # =============================================================================
 # Imports
 # =============================================================================
 import os
+from os import devnull
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import pickle
 import re
+
 
 from tqdm import tqdm
 
@@ -22,12 +26,13 @@ from src.retriever.database_temp_fais import insert_existing_faiss_articles
 # =============================================================================
 # Statics
 # =============================================================================
-from src.data.data_statics import SQL_WIKI_DUMP
+# from src.data.data_statics import SQL_WIKI_DUMP # TODO: Change this
 from src.retriever.retriever_statics import (
     FAISS_TEMP_SQL_DB_PATH,
     FAISS_GEN_N_ARTICLES_BATCH,
 )
 
+SQL_WIKI_DUMP = "/home/roblesi/git/document_information_extraction/data/interim/wiki_db_dumps_for_faiss.db"
 
 REDIRECT_RE = re.compile("REDIRECT")
 
@@ -55,7 +60,7 @@ def is_redirect(summary, body_sections):
     return body_is_list & contains_redirect & small_summary
 
 
-def count_articles(query):
+def count_articles(query, out_f=SQL_WIKI_DUMP):
     """Count the number of articles in a query."""
 
     count_n_query = (
@@ -67,7 +72,39 @@ def count_articles(query):
         + query.split("FROM")[1]
     )
 
-    return retrieve_query(count_n_query)[0][0]
+    return retrieve_query(count_n_query, out_f=out_f)[0][0]
+
+
+def article_filter_query():
+    """Return query to prioritise article embedding."""
+    return """
+    SELECT  wk.pageid
+           ,wk.section_titles
+           ,wk.summary
+           ,wk.body_sections
+           ,ar.title
+
+           
+    FROM wiki_articles wk
+    
+    INNER JOIN article_level_info ar
+        ON ar.pageid = wk.pageid
+
+    INNER JOIN article_redirect_flag rd
+        ON ar.pageid=rd.pageid
+
+    LEFT JOIN articles_in_faiss fai
+        on wk.pageid = fai.pageid
+
+    LEFT JOIN wiki_page_view pvw
+        on ar.pageid = pvw.pageid
+
+    WHERE fai.pageid IS NULL 
+        AND rd.redirect_flag = FALSE
+        AND NOT pvw.mean_views IS NULL
+
+    ORDER BY pvw.mean_views DESC
+    """
 
 
 def sql_reader_passage_generator(
@@ -118,26 +155,15 @@ def sql_reader_passage_generator(
         insert_existing_faiss_articles()
 
     # Define query
-    query = """
-    SELECT  wk.pageid
-           ,wk.section_titles
-           ,wk.summary
-           ,wk.body_sections
-           ,ar.title
-           
-    FROM wiki_articles wk
-    INNER JOIN article_level_info ar
-        ON ar.pageid = wk.pageid
-    LEFT JOIN articles_in_faiss fai
-        on wk.pageid = fai.pageid
-    WHERE fai.pageid IS NULL
-    """
+    query = article_filter_query()
 
+    print("Counting articles...")
     if n_sample_articles:
         query += f"LIMIT {n_sample_articles}"
     else:
-        n_sample_articles = count_articles(query)
+        n_sample_articles = count_articles(query.split("ORDER")[0])
 
+    print("Running query for generator...")
     # Iterate through query
     for article_batch in tqdm(
         retrieve_query_in_batches(query, out_f=out_f, batchsize=batchsize),
@@ -193,6 +219,14 @@ def sql_reader_passage_generator(
                         f""""{storage_method}" is not a supported storage \
                         method, please use "faiss" or "elasticsearch"."""
                     )
+
+
+@contextmanager
+def suppress_stdout_stderr():
+    """A context manager that redirects stdout and stderr to devnull"""
+    with open(devnull, "w") as fnull:
+        with redirect_stderr(fnull) as err, redirect_stdout(fnull) as out:
+            yield (err, out)
 
 
 def make_document_from_passage(passage: dict, storage_method: str) -> dict:
@@ -265,7 +299,11 @@ def processed_document_generator(
         counter += 1
         # If batch finished, yield batch
         if counter % batch_size_doc_generator == 0:
-            split_docs = [preprocessor.process(article) for article in article_batch]
+            # Suppress output from preprocessor
+            with suppress_stdout_stderr():
+                split_docs = [
+                    preprocessor.process(article) for article in article_batch
+                ]
             article_batch = []
 
             # Modify document type for faiss compatibility
