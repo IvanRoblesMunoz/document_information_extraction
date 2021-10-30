@@ -17,6 +17,10 @@ import sqlite3
 
 from src.data.wikipedia.wiki_data_base import get_connection, ArticlesInFAISS
 from src.retriever.retriever_statics import FAISS_TEMP_SQL_DB_PATH
+from src.data.data_statics import SQL_WIKI_DUMP
+
+# TODO: remove this
+SQL_WIKI_DUMP = "/home/roblesi/git/document_information_extraction/data/interim/wiki_db_dumps_for_faiss.db"
 
 # =============================================================================
 # Functions
@@ -71,7 +75,7 @@ def insert_existing_faiss_articles() -> None:
     print(f"{len(existing_ids)} articles already inserted")
 
     # Connect to wiki db
-    engine_wk_db, session_wk_db = engine_to_faiss_temp_db()
+    engine_wk_db, session_wk_db = get_connection(SQL_WIKI_DUMP)
     conn_wk_db = engine_wk_db.connect()
 
     # Refresh table by deleting it

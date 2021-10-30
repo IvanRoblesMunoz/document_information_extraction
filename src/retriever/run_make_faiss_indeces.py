@@ -31,18 +31,16 @@ from src.data.wikipedia.wiki_data_base import get_connection, FAISSEmbeddingStor
 # =============================================================================
 # Statics
 # =============================================================================
-# from src.data.data_statics import SQL_WIKI_DUMP # TODO: Change this
+
 from src.retriever.retriever_statics import (
     FAISS_MAX_PASSAGE_TOKEN_LEN,
     FAISS_DB_DATA_PATH,
     FAISS_QUERY_EMBEDDING_MODEL,
     FAISS_PASSAGE_EMBEDDING_MODEL,
     FAISS_TEMP_SQL_DB_PATH,
-    # FAISS_EMB_DATA_PATH,
-    # FAISS_CONFIG_DATA_PATH,
+    FAISS_N_ARTICLES_ENCODE,
+    FAISS_ARTICLES_BATCH_SIZE,
 )
-
-# SQL_WIKI_DUMP = "/home/roblesi/git/document_information_extraction/data/interim/wiki_db_dumps_for_faiss.db"
 
 # =============================================================================
 # FAISS document store
@@ -92,7 +90,6 @@ def aggregate_output_to_store_by_page_id(flattend_article_batch, flattended_emb_
             encoded_docs = pickle.dumps(entry_docs)
             encoded_embs = pickle.dumps(entry_embs)
             title = entry_docs[0].meta["title"]
-            print(prev_page_id)  # TODO: remove this
             batch_entry.append(
                 {
                     "pageid": prev_page_id,
@@ -111,7 +108,6 @@ def aggregate_output_to_store_by_page_id(flattend_article_batch, flattended_emb_
     encoded_docs = pickle.dumps(entry_docs)
     encoded_embs = pickle.dumps(entry_embs)
     title = entry_docs[0].meta["title"]
-    print(prev_page_id)  # TODO: remove this
     batch_entry.append(
         {
             "pageid": prev_page_id,
@@ -133,13 +129,14 @@ def aggregate_output_to_store_by_page_id(flattend_article_batch, flattended_emb_
 def insert_embeddings_to_database(
     batch_entry, table=FAISSEmbeddingStore, out_f=FAISS_TEMP_SQL_DB_PATH
 ):
+    """Insert embeddings into database."""
     engine, session = get_connection(out_f=out_f)
     engine.execute(table.__table__.insert(), batch_entry)
     session.commit()
     session.close()
 
 
-def main():
+def main(batch_size_doc_generator, **kwargs):
     # Instantiate  embedding objects
     document_store = create_faiss_document_store()
     retriever = initialise_faiss_retriever(document_store)
@@ -150,7 +147,7 @@ def main():
         storage_method="faiss",
         preprocessor=faiss_preprocessor,
         batch_size_doc_generator=1000,
-        # **{"n_sample_articles": 100}
+        **kwargs,
     )
 
     for article_batch in article_generator_faiss:
@@ -167,7 +164,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
-# 2e6 / 7308528
-7308528 * 0.575
+    if FAISS_N_ARTICLES_ENCODE:
+        main(
+            batch_size_doc_generator=FAISS_ARTICLES_BATCH_SIZE,
+            **{"n_sample_articles": FAISS_N_ARTICLES_ENCODE},
+        )
+    else:
+        main(batch_size_doc_generator=FAISS_ARTICLES_BATCH_SIZE)
