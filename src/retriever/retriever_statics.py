@@ -36,3 +36,10 @@ FAISS_ARTICLES_BATCH_SIZE = 1000
 # =============================================================================
 BM25_MAX_PASSAGE_TOKEN_LEN = 2500
 BM25_TEMP_SQL_DB_PATH = INTERIM_DATA_PATH / "temp_bm25_document_store.db"
+
+# =============================================================================
+# ODQA statics
+# =============================================================================
+BM25_PASSAGE_WEIGHT = 3
+BM25_TITLE_WEIGHT = 1
+BM25_LIMIT_SEARCH = 1000
