@@ -11,9 +11,11 @@ Created on Fri May 21 01:26:02 2021
 # =============================================================================
 import os
 import sqlite3
+import itertools
 
 from sqlalchemy import (
     create_engine,
+    Boolean,
     Column,
     Integer,
     Text,
@@ -62,13 +64,46 @@ class ArticleLevelInfo(Base):
     __table_args__ = {"extend_existing": True}
 
     pageid = Column("pageid", Integer, primary_key=True)
-    title = Column("title", Float, unique=False)
-    summary_word_count = Column("summary_word_count", Float, unique=False)
-    body_word_count = Column("body_word_count", Float, unique=False)
+    title = Column("title", Text, unique=False)
+    summary_word_count = Column("summary_word_count", Integer, unique=False)
+    body_word_count = Column("body_word_count", Integer, unique=False)
+
+
+class ArticleRedirectFlag(Base):
+    """Database indicating which articles are redirects."""
+
+    __tablename__ = "article_redirect_flag"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    redirect_flag = Column("redirect_flag", Boolean, unique=False)
+
+
+class WikiPageView(Base):
+    """Article database."""
+
+    __tablename__ = "wiki_page_view"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    title = Column("title", Text, unique=False)
+    pageviews_2020_10_01 = Column("pageviews_2020_10_01", Integer, unique=False)
+    pageviews_2020_11_01 = Column("pageviews_2020_11_01", Integer, unique=False)
+    pageviews_2020_12_01 = Column("pageviews_2020_12_01", Integer, unique=False)
+    pageviews_2021_01_01 = Column("pageviews_2021_01_01", Integer, unique=False)
+    pageviews_2021_02_01 = Column("pageviews_2021_02_01", Integer, unique=False)
+    pageviews_2021_03_01 = Column("pageviews_2021_03_01", Integer, unique=False)
+    pageviews_2021_04_01 = Column("pageviews_2021_04_01", Integer, unique=False)
+    pageviews_2021_05_01 = Column("pageviews_2021_05_01", Integer, unique=False)
+    pageviews_2021_06_01 = Column("pageviews_2021_06_01", Integer, unique=False)
+    pageviews_2021_07_01 = Column("pageviews_2021_07_01", Integer, unique=False)
+    pageviews_2021_08_01 = Column("pageviews_2021_08_01", Integer, unique=False)
+    pageviews_2021_09_01 = Column("pageviews_2021_09_01", Integer, unique=False)
+    mean_views = Column("mean_views", Float, unique=False)
 
 
 class WikiArticleNovelty(Base):
-    """Article database."""
+    """Article novelty database."""
 
     __tablename__ = "wiki_article_novelty"
     __table_args__ = {"extend_existing": True}
@@ -85,8 +120,29 @@ class WikiCosineSimilarity(Base):
     __tablename__ = "wiki_article_cosine_similarity"
     __table_args__ = {"extend_existing": True}
 
-    pageid = Column("pageid", Integer, primary_key=True)
+    pageid = Column("pageid", Text, primary_key=True)
     semantic_similarity = Column("semantic_similarity", Float, unique=False)
+
+
+class ArticlesInFAISS(Base):
+    """List of articles already in FAISS db during embedding process."""
+
+    __tablename__ = "articles_in_faiss"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+
+
+class FAISSEmbeddingStore(Base):
+    """FAISS embedding store"""
+
+    __tablename__ = "faiss_embedding_store"
+    __table_args__ = {"extend_existing": True}
+
+    pageid = Column("pageid", Integer, primary_key=True)
+    title = Column("title", Text, unique=False)
+    embeddings = Column("embeddings", LargeBinary)
+    body_sections = Column("body_sections", LargeBinary, unique=False)
 
 
 def get_connection(out_f=SQL_WIKI_DUMP):
@@ -175,7 +231,7 @@ def retrieve_query(query: tuple, out_f: str = SQL_WIKI_DUMP):
 
 
 def retrieve_query_in_batches(
-    query: tuple, out_f: str = SQL_WIKI_DUMP, batchsize: int = 1
+    query: tuple, out_f: str = SQL_WIKI_DUMP, batchsize: int = 1000
 ):
     """Retrieve query from database in batches."""
     conn = sqlite3.connect(out_f)
@@ -192,12 +248,12 @@ def retrieve_query_in_batches(
         yield batch
 
 
-# TODO: remove filter for already processed rows
 def retrive_suitable_strings(
     out_f: str = SQL_WIKI_DUMP,
     limit: int = None,
     min_tokens_summary: int = MIN_TOKENS_SUMMARY,
     max_tokens_summary: int = MAX_TOKENS_SUMMARY,
+    max_tokens_body: int = int(MAX_TOKENS_SUMMARY / MIN_COMPRESION_RATIO),
     min_tokens_body: int = MIN_TOKENS_BODY,
     min_ratio: float = MIN_COMPRESION_RATIO,
     max_ratio: float = MAX_COMPRESION_RATIO,
@@ -210,6 +266,7 @@ def retrive_suitable_strings(
             INNER JOIN wiki_articles wk 
                 ON ar.pageid = wk.pageid
             WHERE body_word_count>={min_tokens_body} 
+                AND body_word_count<={max_tokens_body}
                 AND summary_word_count>={min_tokens_summary}
                 AND summary_word_count<={max_tokens_summary}
                 AND CAST( summary_word_count AS FLOAT)/ CAST( body_word_count AS FLOAT) >= {min_ratio}
@@ -224,9 +281,74 @@ def retrive_suitable_strings(
         yield rows
 
 
+def retrive_observations_from_ids(
+    ids,
+    out_f=SQL_WIKI_DUMP,
+    table="wiki_articles",
+    id_column="pageid",
+    chunksize=10000,
+):
+    """Retrieve pageid, body and summary based on list of ids."""
+
+    def _retrive_single_query(batch_ids, out_f):
+        """Retrieve single query batch."""
+
+        query = (
+            f"""
+            SELECT *
+            FROM {table}
+            WHERE {id_column} in ({','.join(['?']*len(batch_ids))})
+            """,
+            batch_ids,
+        )
+        return retrieve_query(query, out_f)
+
+    iterations = len(ids) // chunksize + 1
+    relevant_obs = []
+    for i in range(iterations):
+        obs = _retrive_single_query(ids[chunksize * i : chunksize * (i + 1)], out_f)
+        relevant_obs.append(obs)
+
+    relevant_obs = list(itertools.chain(*relevant_obs))
+    return relevant_obs
+
+
 # =============================================================================
 # Transfer
 # =============================================================================
+def redirect_flag_data_input_formater(batch):
+    """Formats data produced by generator for redirect flag to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "redirect_flag": obs[1],
+        }
+        for obs in batch
+    ]
+
+
+def wiki_page_views_data_input_formater(batch):
+    """Formats data produced by generator for wiki page_views to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "title": obs[1],
+            "pageviews_2020_10_01": obs[2],
+            "pageviews_2020_11_01": obs[3],
+            "pageviews_2020_12_01": obs[4],
+            "pageviews_2021_01_01": obs[5],
+            "pageviews_2021_02_01": obs[6],
+            "pageviews_2021_03_01": obs[7],
+            "pageviews_2021_04_01": obs[8],
+            "pageviews_2021_05_01": obs[9],
+            "pageviews_2021_06_01": obs[10],
+            "pageviews_2021_07_01": obs[11],
+            "pageviews_2021_08_01": obs[12],
+            "pageviews_2021_09_01": obs[13],
+            "mean_views": obs[14],
+        }
+        for obs in batch
+    ]
 
 
 def novelty_data_input_formater(batch):
@@ -248,6 +370,19 @@ def semantic_similarity_data_input_formater(batch):
         {
             "pageid": obs[0],
             "semantic_similarity": obs[1],
+        }
+        for obs in batch
+    ]
+
+
+def faiss_embedding_data_input_formater(batch):
+    """Formats data produced by generator for faiss embeddings to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "title": obs[1],
+            "embeddings": obs[2],
+            "body_sections": obs[3],
         }
         for obs in batch
     ]
@@ -287,37 +422,18 @@ def transfer_to_new_db(
 
 
 # =============================================================================
-# Old
+# Other
 # =============================================================================
+def count_articles(query):
+    """Count the number of articles in a query."""
 
+    count_n_query = (
+        """
+        SELECT COUNT(*)
+        FROM
+        """
+        + " "
+        + query.split("FROM")[1]
+    )
 
-# def retrive_observations_from_ids(
-#     ids,
-#     out_f=SQL_WIKI_DUMP,
-#     # table="wiki_articles",
-#     id_column="page_id",
-#     chunksize=10000,
-# ):
-#     """Retrieve pageid, body and summary based on list of ids."""
-
-#     def _retrive_single_query(batch_ids, out_f):
-#         """Retrieve single query batch."""
-
-#         query = (
-#             f"""
-#             SELECT pageid,summary,body
-#             FROM wiki_articles
-#             WHERE {id_column} in ({','.join(['?']*len(batch_ids))})
-#             """,
-#             batch_ids,
-#         )
-#         return retrieve_query(query, out_f)
-
-#     iterations = len(ids) // chunksize + 1
-#     relevant_obs = []
-#     for i in range(iterations):
-#         obs = _retrive_single_query(ids[chunksize * i : chunksize * (i + 1)], out_f)
-#         relevant_obs.append(obs)
-
-#     relevant_obs = list(itertools.chain(*relevant_obs))
-#     return relevant_obs
+    return retrieve_query(count_n_query)[0][0]
