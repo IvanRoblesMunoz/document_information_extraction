@@ -19,8 +19,6 @@ from src.data.wikipedia.wiki_data_base import get_connection, ArticlesInFAISS
 from src.retriever.retriever_statics import FAISS_TEMP_SQL_DB_PATH
 from src.data.data_statics import SQL_WIKI_DUMP
 
-# TODO: remove this
-SQL_WIKI_DUMP = "/home/roblesi/git/document_information_extraction/data/interim/wiki_db_dumps_for_faiss.db"
 
 # =============================================================================
 # Functions

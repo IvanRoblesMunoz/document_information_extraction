@@ -27,14 +27,12 @@ from src.retriever.database_temp_faiss import insert_existing_faiss_articles
 # =============================================================================
 # Statics
 # =============================================================================
-# from src.data.data_statics import SQL_WIKI_DUMP # TODO: Change this
+from src.data.data_statics import SQL_WIKI_DUMP
 from src.retriever.retriever_statics import (
     FAISS_TEMP_SQL_DB_PATH,
     FAISS_GEN_N_ARTICLES_BATCH,
 )
 
-# TODO: Remove this
-SQL_WIKI_DUMP = "/home/roblesi/git/document_information_extraction/data/interim/wiki_db_dumps_for_faiss.db"
 
 REDIRECT_RE = re.compile("REDIRECT")
 
@@ -54,14 +52,6 @@ def row_to_article(article):
     return page_id, section_titles, summary, body_sections, title
 
 
-def is_redirect(summary, body_sections):
-    """Check if article is a redirect."""
-    body_is_list = body_sections == []
-    contains_redirect = bool(re.search(REDIRECT_RE, summary))
-    small_summary = len(summary.split()) <= 20
-    return body_is_list & contains_redirect & small_summary
-
-
 def count_articles(query, out_f=SQL_WIKI_DUMP):
     """Count the number of articles in a query."""
 
@@ -69,7 +59,6 @@ def count_articles(query, out_f=SQL_WIKI_DUMP):
         """
         SELECT COUNT(*) AS all_articles,
                SUM(CASE WHEN faipageid IS NULL THEN 0 ELSE 1 END) AS articles_in
-        
         FROM
         """
         + " "
@@ -79,6 +68,18 @@ def count_articles(query, out_f=SQL_WIKI_DUMP):
     count_n_query = count_n_query.split("WHERE sub.faipageid IS NULL")[0]
 
     return retrieve_query(count_n_query, out_f=out_f)[0]
+
+
+def count_articles_bm25(query, out_f=SQL_WIKI_DUMP):
+    count_n_query = (
+        """
+        SELECT COUNT(*)
+        FROM
+        """
+        + " "
+        + "FROM".join(query.split("FROM")[1:])
+    )
+    return retrieve_query(count_n_query, out_f=out_f)[0][0]
 
 
 def article_sub_query(n_sample_articles):
@@ -117,7 +118,7 @@ def article_sub_query(n_sample_articles):
     return sub_query
 
 
-def article_filter_query(n_sample_articles):
+def article_filter_query(n_sample_articles, storage_method):
     """Return query to prioritise article embedding."""
     query = (
         """
@@ -125,12 +126,36 @@ def article_filter_query(n_sample_articles):
     FROM (
     """
         + article_sub_query(n_sample_articles)
-        + """
-        ) sub
-    WHERE sub.faipageid IS NULL 
-    
-    """
+        + """) sub """
     )
+
+    if storage_method == "faiss":
+        query += """ WHERE sub.faipageid IS NULL"""
+
+    return query
+
+
+def article_filter_query_bm25():
+    query = """
+    SELECT  wk.pageid
+           ,wk.section_titles
+           ,wk.summary
+           ,wk.body_sections
+           ,ar.title
+           ,fai.pageid AS faipageid
+    
+           
+    FROM wiki_articles wk
+    
+    INNER JOIN article_level_info ar
+        ON ar.pageid = wk.pageid
+    
+    INNER JOIN article_redirect_flag rd
+        ON ar.pageid=rd.pageid
+    
+    INNER JOIN articles_in_faiss fai
+        on wk.pageid = fai.pageid
+    """
     return query
 
 
@@ -139,7 +164,6 @@ def sql_reader_passage_generator(
     n_sample_articles: int = None,
     out_f: str = SQL_WIKI_DUMP,
     batchsize: int = 1,
-    skip_redirects: bool = True,
 ) -> dict:
     """
     Generate passages from articles.
@@ -150,8 +174,8 @@ def sql_reader_passage_generator(
     Parameters
     ----------
     storage_method : str
-        Storage method used, options are "faiss" or "elasticsearch".
-        elasticsearch will pass the whole article, faiss will split the
+        Storage method used, options are "faiss" or "bm25".
+        bm25 will pass the whole article, faiss will split the
         article into passages based on article sections.
     n_sample_articles : int, optional
         Number of sample articles to limit query, if None, all are returned.
@@ -159,14 +183,12 @@ def sql_reader_passage_generator(
     out_f : str, optional
         Location of sql database. The default is SQL_WIKI_DUMP.
     batchsize : int, optional
-        The default is 5.
-    skip_redirects : bool, optional
-        If to skip redirects. The default is True.
+        The default is 1.
 
     Yields
     ------
     dict
-        1. For elasticsearch
+        1. For bm25
            {"page_id": page_id,
             "title": title,
             "section_title": section_title,
@@ -178,20 +200,31 @@ def sql_reader_passage_generator(
 
     """
     # Update table to check if we have already inserted certain aricles
-    if os.path.isfile(FAISS_TEMP_SQL_DB_PATH):
+    if (storage_method == "faiss") & (os.path.isfile(FAISS_TEMP_SQL_DB_PATH)):
         insert_existing_faiss_articles()
 
     # Define query
-    query = article_filter_query(n_sample_articles)
+    if storage_method == "faiss":
+        query = article_filter_query(n_sample_articles, storage_method)
+    elif storage_method == "bm25":
+        query = article_filter_query_bm25()
+    else:
+        raise Exception(
+            f""""{storage_method}" is not a supported storage \
+             method, please use "faiss" or "bm25"."""
+        )
 
     print("Counting articles...")
-    n_all_articles, articles_in = count_articles(query)
+    if storage_method == "faiss":
+        n_all_articles, articles_in = count_articles(query)
+    else:
+        n_all_articles = count_articles_bm25(query)
+        articles_in = 0
 
     print("Running query for generator...")
     article_generator = retrieve_query_in_batches(
         query, out_f=out_f, batchsize=batchsize
     )
-
     # Iterate through query
     for article_batch in tqdm(
         article_generator,
@@ -204,49 +237,44 @@ def sql_reader_passage_generator(
             page_id, section_titles, summary, body_sections, title = row_to_article(
                 article
             )
-            # If we want to skip redirects ignore else yield passages
-            if skip_redirects & is_redirect(summary, body_sections):
-                pass
-            else:
-                # If Faiss, we will yield a passage for each section
-                if storage_method == "faiss":
-                    # Define summary document
-                    summary = [
-                        {
-                            "page_id": page_id,
-                            "title": title,
-                            "section_title": "summary",
-                            "section_text": summary,
-                        }
-                    ]
 
-                    # Define body document
-                    body = [
-                        {
-                            "page_id": page_id,
-                            "title": title,
-                            "section_title": sect_title_,
-                            "section_text": sect_body_,
-                        }
-                        for sect_title_, sect_body_ in zip(
-                            section_titles, body_sections
-                        )
-                    ]
-                    # Yield both together
-                    yield summary + body
-
-                # If elastic search, we will yield a single
-                elif storage_method == "elasticsearch":
-                    yield {
+            # If Faiss, we will yield a passage for each section
+            if storage_method == "faiss":
+                # Define summary document
+                summary = [
+                    {
                         "page_id": page_id,
                         "title": title,
-                        "section_text": summary + "".join(body_sections),
+                        "section_title": "summary",
+                        "section_text": summary,
                     }
-                else:
-                    raise Exception(
-                        f""""{storage_method}" is not a supported storage \
-                        method, please use "faiss" or "elasticsearch"."""
-                    )
+                ]
+
+                # Define body document
+                body = [
+                    {
+                        "page_id": page_id,
+                        "title": title,
+                        "section_title": sect_title_,
+                        "section_text": sect_body_,
+                    }
+                    for sect_title_, sect_body_ in zip(section_titles, body_sections)
+                ]
+                # Yield both together
+                yield summary + body
+
+            # If elastic search, we will yield a single
+            elif storage_method == "bm25":
+                yield {
+                    "page_id": page_id,
+                    "title": title,
+                    "section_text": summary + "".join(body_sections),
+                }
+            else:
+                raise Exception(
+                    f""""{storage_method}" is not a supported storage \
+                    method, please use "faiss" or "bm25"."""
+                )
 
 
 @contextmanager
@@ -271,12 +299,12 @@ def make_document_from_passage(passage: dict, storage_method: str) -> dict:
     if storage_method == "faiss":
         document["meta"]["section_title"] = passage["section_title"]
 
-    elif storage_method == "elasticsearch":
+    elif storage_method == "bm25":
         pass
     else:
         raise Exception(
             f""""{storage_method}" is not a supported storage \
-             method, please use "faiss" or "elasticsearch"."""
+             method, please use "faiss" or "bm25"."""
         )
     return document
 
@@ -301,8 +329,8 @@ def processed_document_generator(
     Parameters
     ----------
     storage_method : str
-        Storage method used, options are "faiss" or "elasticsearch".
-        elasticsearch will pass the whole article, faiss will split the
+        Storage method used, options are "faiss" or "bm25".
+        bm25 will pass the whole article, faiss will split the
         article into passages based on article sections.
     preprocessor : PreProcessor
         Preprocessor used to process the documents.
@@ -326,6 +354,8 @@ def processed_document_generator(
 
     for article in sql_reader_passage_generator(**kwargs):
 
+        if storage_method == "bm25":
+            article = [article]
         article_processed = [
             make_document_from_passage(passage, storage_method) for passage in article
         ]

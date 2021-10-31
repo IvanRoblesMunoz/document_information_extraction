@@ -187,22 +187,12 @@ def count_articles():
     return retrieve_query(count_n_query)[0]
 
 
-# @exit_after(PAGE_VIEWS_API_TIMEOUT)
 def run_requests_concurrently(args_list):
-    # try:
+
     if __name__ == "__main__":
         pool = multiprocessing.Pool(os.cpu_count() * PROCESS_MULTIPLIER)
         response_list = pool.map(make_pageview_request, tuple(args_list))
-        # pool.close()
-        # pool.terminate()
-        # pool.join()
 
-    # except:  # JSONDecodeError:
-    #     print("arglist causing error", arglist)
-    #     pool.close()
-    #     pool.terminate()
-    #     pool.join()
-    #     response_list = []
     return response_list
 
 

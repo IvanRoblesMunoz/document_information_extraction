@@ -28,10 +28,11 @@ FAISS_CONFIG_DATA_PATH = INTERIM_DATA_PATH / "faiss_sql_database.json"
 
 FAISS_QUERY_EMBEDDING_MODEL = "facebook/dpr-question_encoder-single-nq-base"
 FAISS_PASSAGE_EMBEDDING_MODEL = "facebook/dpr-ctx_encoder-single-nq-base"
-FAISS_N_ARTICLES_ENCODE = 1_500_00  # 2_200_000
+FAISS_N_ARTICLES_ENCODE = 2_200_000
 FAISS_ARTICLES_BATCH_SIZE = 1000
 
 # =============================================================================
 # Sparse retriever statics
 # =============================================================================
-ELASTICSEARCH_MAX_PASSAGE_TOKEN_LEN = 2500
+BM25_MAX_PASSAGE_TOKEN_LEN = 2500
+BM25_TEMP_SQL_DB_PATH = INTERIM_DATA_PATH / "temp_bm25_document_store.db"

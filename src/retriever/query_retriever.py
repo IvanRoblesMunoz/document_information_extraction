@@ -46,7 +46,7 @@ faiss_pre_processor = PreProcessor(
 faiss_generator = processed_document_generator(
     storage_method="faiss",
     preprocessor=faiss_pre_processor,
-    **{"n_sample_articles": 1000}
+    **{"n_sample_articles": 1000},
 )
 
 for batch in faiss_generator:
@@ -81,3 +81,57 @@ response = index.search(query_vectors, 5)
 response_doc = [(batch[i].content, batch[i].meta["title"]) for i in response[1][0]]
 
 help(index.search)
+
+
+# =============================================================================
+# Query search
+# =============================================================================
+from nltk.stem.porter import PorterStemmer
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+import string
+
+
+ENGLISH_STOPWORDS = set(stopwords.words("english"))
+ENGLISH_PUNCTUATION = set(string.punctuation)
+PORTER_STEMMER = PorterStemmer()
+BM25_PASSAGE_WEIGHT = 10
+BM25_TITLE_WEIGHT = 10
+BM25_LIMIT_SEARCH = 1000
+
+search_query = "what is the philosophy behind Anarchism?"
+
+
+def clean_up_search_query(search_query):
+    search_query = set(word_tokenize(search_query))
+    search_query = search_query - ENGLISH_STOPWORDS
+    search_query = search_query - ENGLISH_PUNCTUATION
+    search_query = [PORTER_STEMMER.stem(token) for token in search_query]
+    return search_query
+
+
+def produce_formated_bm25_search_query(search_query):
+    search_query = clean_up_search_query(search_query)
+    search_query = " OR ".join(search_query)
+    return search_query
+
+
+def retrieve_using_bm25(
+    query_search,
+    cur,
+    passage_weight=BM25_PASSAGE_WEIGHT,
+    title_weight=BM25_TITLE_WEIGHT,
+    limit_articles=BM25_LIMIT_SEARCH,
+):
+    formated_query_search = clean_up_search_query(search_query)
+    formated_query_search = f"(passage: {query_search}) AND (title: {query_search})"
+
+    template_query_bm25 = f"""
+        SELECT *, bm25(bm25_wiki_articles,{passage_weight},{title_weight})
+        FROM bm25_wiki_articles
+        WHERE bm25_wiki_articles MATCH "{formated_query_search}"
+        ORDER BY bm25(bm25_wiki_articles,{passage_weight},{title_weight})
+        LIMIT {limit_articles}
+    """
+    res = cur.execute(template_query_bm25).fetchall()
+    return res

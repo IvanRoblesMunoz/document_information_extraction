@@ -26,7 +26,13 @@ from haystack.retriever.dense import DensePassageRetriever
 
 from haystack.preprocessor import PreProcessor
 from src.retriever.retriever_input_articles import processed_document_generator
-from src.data.wikipedia.wiki_data_base import get_connection, FAISSEmbeddingStore
+from src.data.wikipedia.wiki_data_base import (
+    get_connection,
+    FAISSEmbeddingStore,
+    transfer_to_new_db,
+    SQL_WIKI_DUMP,
+    faiss_embedding_data_input_formater,
+)
 
 # =============================================================================
 # Statics
@@ -70,10 +76,12 @@ def initialise_faiss_retriever(
 
 
 def embed_article_batch(retriever, flattend_article_batch):
+    """Embedd article batch."""
     return retriever.embed_passages(flattend_article_batch)
 
 
 def aggregate_output_to_store_by_page_id(flattend_article_batch, flattended_emb_batch):
+    """Produce embeddings aggregated so that pageid is a primary unique key."""
     prev_page_id = None
     entry_docs = []
     entry_embs = []
@@ -137,6 +145,7 @@ def insert_embeddings_to_database(
 
 
 def main(batch_size_doc_generator, **kwargs):
+    """Run make faiss indeces."""
     # Instantiate  embedding objects
     document_store = create_faiss_document_store()
     retriever = initialise_faiss_retriever(document_store)
@@ -171,3 +180,20 @@ if __name__ == "__main__":
         )
     else:
         main(batch_size_doc_generator=FAISS_ARTICLES_BATCH_SIZE)
+
+    # Transfer to main db
+    src_query = """
+         SELECT *
+         FROM faiss_embedding_store
+     """
+    transfer_to_new_db(
+        src_query,
+        src_db=FAISS_TEMP_SQL_DB_PATH,
+        dest_db=SQL_WIKI_DUMP,
+        dest_table=FAISSEmbeddingStore,
+        batch_formater=faiss_embedding_data_input_formater,
+    )
+
+    # Delete temporary db
+    if os.path.exists(FAISS_TEMP_SQL_DB_PATH):
+        os.remove(FAISS_TEMP_SQL_DB_PATH)

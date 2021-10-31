@@ -375,6 +375,19 @@ def semantic_similarity_data_input_formater(batch):
     ]
 
 
+def faiss_embedding_data_input_formater(batch):
+    """Formats data produced by generator for faiss embeddings to insert in db."""
+    return [
+        {
+            "pageid": obs[0],
+            "title": obs[1],
+            "embeddings": obs[2],
+            "body_sections": obs[3],
+        }
+        for obs in batch
+    ]
+
+
 def insert_into_db(generator, table, dest_db, batch_formater):
     """Insert data into database without deleting original table or db."""
     # Connect
