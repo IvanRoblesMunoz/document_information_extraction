@@ -113,7 +113,9 @@ class WikiODQARetriever:
         return decoded_articles, decoded_embeddings
 
     def _make_faiss_index(self):
-        self.faiss_index = faiss.IndexFlatL2(FAISS_SEMANTIC_SIMIL_DIM)
+        # self.faiss_index = faiss.IndexFlatL2(FAISS_SEMANTIC_SIMIL_DIM)
+
+        self.faiss_index = faiss.IndexFlatIP(FAISS_SEMANTIC_SIMIL_DIM)
         self.faiss_index.add(np.stack(self.decoded_embeddings))
 
     def _extract_queries_faiss(self, query_search, out_f=SQL_WIKI_DUMP, verbose=True):
@@ -121,8 +123,8 @@ class WikiODQARetriever:
         db = sqlite3.connect(out_f)
         cur = db.cursor()
 
-        if verbose:
-            print("Retrieving articles using BM25 ...")
+        # if verbose:
+        #     print("Retrieving articles using BM25 ...")
         relevant_bm25_articles = retrieve_using_bm25(query_search, cur)
 
         pageids, _, _, _ = zip(*relevant_bm25_articles)
