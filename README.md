@@ -22,7 +22,7 @@ It will also create a few other tables used to assess document summarisation sui
 - Summary novelty
 - Redirect flags    
 
-For a more in depth look into what the final main SQL database looks like, check this [notebook](notebooks/EDA/01-evaluate-token-distribution.ipynb)
+For a more in depth look into what the final main SQL database looks like, check this [notebook](notebooks/eda/01-evaluate-token-distribution.ipynb)
 And for a datamodel, check this [script](src/data/wikipedia/wiki_data_base.py)
 
 
