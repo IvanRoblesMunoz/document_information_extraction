@@ -47,8 +47,7 @@ shell_comands/04_make_wiki_database.sh
 ## 4. Open Domain Question Answering
 As it is the final embeddings database can be used to query the most relevant passages from all of wikipedia. each query takes less than 1 second. 
 
-A demo can be found in the following [notebook](notebooks/demo_reader_retriever/01_sample_questions.ipynb). 
-
+A demo can be found in the following [notebook](notebooks/demo_reader_retriver/01_sample_questions.ipynb). 
 The following class can be imported and used to query, as long as the databases specified above have been created.
 
 ```
